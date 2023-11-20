@@ -1,0 +1,1 @@
+{"frames":[{"func":"inla.barrier.fem(mesh, triBarrier)","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0},{"func":"unique(barrier.triangles)","file":"","line_number":0,"end_line_number":0,"character_number":0,"end_character_number":0}],"message":"Error: object 'triBarrier' not found\n"}

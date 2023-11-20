@@ -1,0 +1,5 @@
+"0",""
+"0",""
+"0","## --------------------------------------------------------------------------------"
+"0","tmp = inla.tmarginal(function(x) exp(x), res.barrier.o$marginals.hyperpar[[3]]) "
+"0","plot(tmp, type = ""l"", xlab = ""r"", ylab = ""Density"")"

@@ -1,0 +1,90 @@
+"0","inla.barrier.polygon
+"
+"1","function (mesh, barrier.triangles, Omega = NULL) 
+"
+"1","{
+"
+"1","    stopifnot(inherits(mesh, ""inla.mesh""))
+"
+"1","    inla.require(""sf"", stop.on.error = TRUE)
+"
+"1","    if (missing(barrier.triangles)) {
+"
+"1","    }
+"
+"1","    else {
+"
+"1","        barrier.triangles <- unique(barrier.triangles)
+"
+"1","        t <- length(mesh$graph$tv[, 1])
+"
+"1","        remaining <- setdiff(1:t, barrier.triangles)
+"
+"1","        if (!is.null(Omega)) 
+"
+"1","            warning(""Omega is replaced by barrier.triangles"")
+"
+"1","        Omega <- list(remaining, barrier.triangles)
+"
+"1","    }
+"
+"1","    Omega.SP.list <- list()
+"
+"1","    for (j in 1:length(Omega)) {
+"
+"1","        poly.list <- list()
+"
+"1","        for (tri in Omega[[j]]) {
+"
+"1","            px <- mesh$graph$tv[tri, ]
+"
+"1","            temp <- mesh$loc[px, ]
+"
+"1","            poly.list <- c(poly.list, Polygon(rbind(temp[c(3, 
+"
+"1","                2, 1), 1:2], temp[3, 1:2]), hole = FALSE))
+"
+"1","        }
+"
+"1","        mesh.polys <- SpatialPolygons(list(Polygons(poly.list, 
+"
+"1","            ID = ""noid"")))
+"
+"1","        if (interactive() && compareVersion(getNamespaceVersion(""sf""), 
+"
+"1","            ""1.0-10"") < 0) {
+"
+"1","            warning(paste0(""The sf::st_as_sfc.SpatialPolygons() function is broken for some inputs in versions before 1.0-10.\n"", 
+"
+"1","                ""Please check your output carefully, and upgrade to sf version 1.0-10 or later.""), 
+"
+"1","                immediate. = TRUE)
+"
+"1","        }
+"
+"1","        inla.require(""sf"", stop.on.error = TRUE)
+"
+"1","        mesh.polys <- sf::st_as_sfc(mesh.polys)
+"
+"1","        Omega.SP.list[[j]] <- sf::as_Spatial(sf::st_union(mesh.polys))
+"
+"1","    }
+"
+"1","    if (missing(barrier.triangles)) {
+"
+"1","        return(Omega.SP.list)
+"
+"1","    }
+"
+"1","    else {
+"
+"1","        return(Omega.SP.list[[2]])
+"
+"1","    }
+"
+"1","}
+"
+"1","<bytecode: 0x14026ab20>
+"
+"1","<environment: namespace:INLA>
+"

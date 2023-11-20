@@ -1,0 +1,27 @@
+{
+    "id": "FAEC2085",
+    "path": "~/Documents/Research/BasicFunctions/diff_transparencyExplore.Rmd",
+    "project_path": "diff_transparencyExplore.Rmd",
+    "type": "r_markdown",
+    "hash": "129792038",
+    "contents": "",
+    "dirty": true,
+    "created": 1699962061856.0,
+    "source_on_save": false,
+    "relative_order": 7,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "2,0",
+        "scrollLine": "0"
+    },
+    "folds": "32|8|44|0|\n46|8|83|0|\n113|8|120|0|\n519|23|630|0|\n",
+    "lastKnownWriteTime": 1700394734,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1700394734,
+    "read_only": false,
+    "read_only_alternatives": []
+}

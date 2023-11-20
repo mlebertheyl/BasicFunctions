@@ -1,0 +1,6 @@
+"0","pal <- wes_palette(21, name = ""Zissou1"", type = ""continuous"")"
+"0","par(mfrow = c(2, 2))"
+"0",""
+"0","### 1,2 plots"
+"0","local.plot.field(u, main=""The true (simulated) spatial field"","
+"0","                 sub = ""local.plot.field()"")"

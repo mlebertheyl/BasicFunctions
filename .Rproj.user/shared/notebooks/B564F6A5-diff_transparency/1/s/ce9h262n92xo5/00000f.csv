@@ -1,0 +1,3 @@
+"0","## --------------------------------------------------------------------------------"
+"0","local.plot.field(res.stationary$summary.random$s$mean,"
+"0","          main=""Spatial estimate with the stationary model"")"

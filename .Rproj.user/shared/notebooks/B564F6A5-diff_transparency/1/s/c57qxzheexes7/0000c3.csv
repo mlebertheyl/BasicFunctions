@@ -1,0 +1,3 @@
+"0","plot(poly.bar2, add=T, col=alpha('grey', 0.5))"
+"2","Error in alpha(""grey"", 0.5) : could not find function ""alpha""
+"

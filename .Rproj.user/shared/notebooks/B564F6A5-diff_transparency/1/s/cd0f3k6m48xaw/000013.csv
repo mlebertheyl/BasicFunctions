@@ -1,0 +1,2 @@
+"0","xvals = seq(0, 10, length.out=1000)"
+"0","lambda = 0.99; lines(xvals, 3*exp(-lambda*xvals), lty='dashed')"

@@ -1,0 +1,7 @@
+"0",""
+"0","ggplot() +"
+"0","    gg(mesh) +"
+"0","    geom_point(aes("
+"0","        x = triCenters[,1],"
+"0","        y = triCenters[,2],"
+"0","        color = isInBarrier2))"

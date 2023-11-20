@@ -1,0 +1,1 @@
+{"frames":[],"message":"Error in inla.barrier.fem.plus(mesh, list(bar1, bar2)) : \n  could not find function \"inla.barrier.fem.plus\"\n"}

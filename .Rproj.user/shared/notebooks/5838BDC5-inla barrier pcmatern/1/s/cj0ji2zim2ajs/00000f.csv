@@ -1,0 +1,14 @@
+"0","inla.barrier.pcmatern(mesh, barrier.triangles = barrier, prior.range = c(1.44, 0.5), prior.sigma = c(0.7, 0.5), range.fraction = 0.1)
+"
+"2","Loading required namespace: INLAspacetime
+"
+"2","Failed with error:  "
+"2",""
+"2","‘there is no package called ‘INLAspacetime’’"
+"2",""
+"2","
+"
+"2","Warning: Please install the `INLAspacetime` package
+ which contains an implementation that runs faster!"
+"2","Error: object 'barrier' not found
+"

@@ -1,0 +1,1694 @@
+---
+title: "Adaptive barriers"
+author: "Martina"
+date: "Created in March, 2023. Last update: `r format(Sys.Date(), '%a %d %b, %Y')`"
+output:
+  rmarkdown::html_vignette:
+  rmarkdown::pdf_document:
+vignette: >
+  %\VignetteIndexEntry{A barrier model illustration}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+bibliography: INLAspacetime.bib
+---
+
+```{r setup, include = FALSE}
+library(knitr)
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  dev = "png",
+  dev.args = list(type = "cairo-png"),
+  fig.width = 10,
+  fig.height = 7,
+  dpi = 300,
+  out.width = "99%",
+  fig.align = "center"
+)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Abstract
+
+In this tutorial we illustrate a new implementation of the model proposed in @bakka2019barrier. 
+It consider the problem of modeling over a spatial domain accounting for physical barriers. 
+The original implementation is illustrated in
+[this tutorial](https://haakonbakkagit.github.io/btopic128.html).
+The re-implementation consider a new (faster) computational method 
+available in the **INLA** package. 
+See details at the end of this vignette to update old
+working code to use this new implementation.
+
+# Introduction
+
+Suppose that there is a phenomena that varies over a spatial domain. 
+Models usually consider correlation between observations made. 
+Considering a pair of observations, the correlation is usually specified as 
+a function of the distance between the location sites
+from where these observations were collected. 
+If there is a barrier in the spatial domain, 
+this correlation for a pair of observations taken from sites in different 
+sides of the barrier shall consider the barrier. 
+In resume, it should no longer be just a function of the distance.
+Basically, the correlation between points 
+in two different sides of the barrier should decay faster (than the usual) 
+to zero and "does not cross the domain". 
+
+In order to illustrate the problem, 
+let us define a rectangle as our spatial domain: 
+```{r domain}
+rxy <- c(10, 6)
+r <- mean(rxy)
+bb <- rbind(
+    c(0, 1)*rxy[1],
+    c(0, 1)*rxy[2])
+domain <- cbind(
+    c(0, 1, 1, 0, 0) * rxy[1],
+    c(0, 0, 1, 1, 0) * rxy[2])
+``` 
+
+We will now set the barrier as the two polygons defined as follows
+```{r bdomain}
+barrier1 <- cbind(
+  cos(seq(0, 2*pi, length=50)) * 0.7 + 0.50 * rxy[1], 
+  sin(seq(0, 2*pi, length=50)) * 1.0 + 0.75 * rxy[2])
+barrier2 <- cbind(
+  c(0.50, 1.50, 1.50, 0.50, 0.50) * rxy[1],
+  c(0.33, 0.33, 0.40, 0.40, 0.33) * rxy[2])
+```
+
+We can visualize these polygons in order to make the problem clear:
+```{r domainvis}
+par(mar = c(2, 2, 0, 0), mgp = c(2, 0.5, 0), las=1)
+plot(t(bb), bty="n", type = "n", asp = 1)
+polygon(domain, col = rgb(0.5,0.7,1))
+polygon(barrier1, col = rgb(0.3,0.2,0.1, 0.5))
+polygon(barrier2, col = rgb(0.3,0.2,0.1, 0.5))
+```
+
+The problem is to model data in both sides of the barrier considering that the 
+correlation between then should account for the barrier. 
+The proposed method in @bakka2019barrier 
+models the entire domain, including the barrier. 
+To deal with the barrier, the correlation range is set to be reasonable shorter 
+over the barrier domain than the one at the domain of interest. 
+This idea is simple and does not add any parameter in the usual stationary model. 
+Furthermore, it can be implemented with any inferential method.
+
+In @bakka2019barrier, the proposed method consider the 
+Stochastic Partial Differential Equations - SPDE 
+approach proposed in @lindgren2011explicit.
+The implementation illustrated in
+[this tutorial](https://haakonbakkagit.github.io/btopic128.html) 
+deals with a discretization of the domain. 
+The discretization should be considered with some care.
+The fraction fixed for the analysis interplay with the width of the barrier. 
+One should choose a small enough fraction, 
+see details in @bakka2019barrier.
+
+We first load the packages that will be used in this tutorial.
+
+```{r packages}
+library(INLA)
+#library(INLAspacetime)
+library(inlabru)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r inlaversioncheck, echo = FALSE}
+iV <- grep("^Version", readLines(system.file("DESCRIPTION", package = "INLA")), value = TRUE)
+```
+
+```{r lic, echo = FALSE}
+inla.setOption(
+    pardiso.license = "~/.pardiso.lic" 
+)
+```
+
+# Model definition and discretization
+
+Let us consider that there is an underlying 
+random field over the specified domain. 
+This random field will be discretized using the mesh
+so that a precision matrix is defined for the
+distribution at the mesh nodes.
+We will define the barrier model as
+proposed in @bakka2019barrier
+which make use of a triangulation.
+
+# Mesh and triangles
+
+The solution consider a discretization of the spatial domain and 
+the simplest one is using triangles.
+Therefore we start with the following mesh made up of small triangles 
+in the domain and bigger around it.
+```{r mesh}
+mesh <- inla.mesh.2d(
+    loc.domain = domain, 
+    max.edge = c(0.03, 0.1) * r,
+    offset = c(0.1, 0.3) * r,
+    cutoff = 0.01 * r)
+mesh$n
+```
+The solution needs the triangles inside the barrier domain to be identified. 
+We start computing the center of each mesh triangle with
+```{r triCenters}
+triCenters <-
+        (mesh$loc[mesh$graph$tv[,1], ] +
+        mesh$loc[mesh$graph$tv[,2], ] +
+        mesh$loc[mesh$graph$tv[,3], ]) / 3
+``` 
+
+For each triangle center we check if it is inside or not of the barrier domain
+and and create a vector to identify to which domain is each triangle center inside
+```{r ibarrier}
+isInBarrier <- (splancs::inout(triCenters, barrier1)) |
+  (splancs::inout(triCenters, barrier2))
+```
+
+We can visualize the mesh and color the triangle centers 
+using the **ggplot** methods from the **inlabru** package
+```{r vmesh, eval=FALSE}
+library(inlabru)
+ggplot() +
+    gg(mesh) +
+    geom_point(aes(
+        x = triCenters[,1],
+        y = triCenters[,2],
+        color = isInBarrier))
+```
+
+Notice that the mesh goes beyond the domain area including a boundary extension.
+Then we also had defined the barrier so that it is also defined in this boundary.
+Therefore, when building the model over this discretization, the barrier will
+be well defined and the behavior of the process will be as intended.
+
+## Precision matrix 
+
+The parameters in this model are the range and the marginal variance,
+We also define the range parameter in the barrier so that the method works.
+We consider the range for the barrier as a fraction of the range over the domain.
+We just use half of the average rectangle edges as the range in the domain
+and 10% of it in the barrier. 
+```{r rfparams, eval=FALSE}
+sigma <- 1
+(ranges <- r * c(0.5, 0.05))
+```
+
+We will implement the model with the mesh previously defined.
+This start with defining which triangles have centers in the barrier.
+```{r triBarrier, eval=FALSE}
+triBarrier <- which(isInBarrier) 
+length(triBarrier)
+```
+
+Then we compute the Finite Element matrices needed for the
+model discretization, as detailed in @bakka2019barrier.
+```{r bfem, eval=FALSE}
+inla.barrier.fem
+```
+
+We now build the precision matrix with
+
+Q <- ACA from paper
+
+
+
+Fit the model using generic......
+
+### My trial bfem functions
+
+```{r ibarrier.copy}
+#line 166
+isInBarrier1 <- (splancs::inout(triCenters, barrier1))
+isInBarrier2 <- (splancs::inout(triCenters, barrier2))
+```
+
+```{r vmesh.copy}
+#line 172
+library(inlabru)
+
+ggplot() +
+    gg(mesh) +
+    geom_point(aes(
+        x = triCenters[,1],
+        y = triCenters[,2],
+        color = isInBarrier1))
+
+ggplot() +
+    gg(mesh) +
+    geom_point(aes(
+        x = triCenters[,1],
+        y = triCenters[,2],
+        color = isInBarrier2))
+```
+
+
+```{r rfparams.copy, eval=FALSE}
+#line 194
+sigma <- 1
+(ranges.copy <- r * c(0.5, 0.05, 0.005))
+```
+
+```{r triBarrier.copy}
+#line 201
+triBarrier1 <- which(isInBarrier1) 
+triBarrier2 <- which(isInBarrier2) 
+length(triBarrier1); length(triBarrier2); length(triBarrier1) + length(triBarrier2)
+```
+
+### bfem.copy1.0
+
+Try to change some indices for matrix A. This is not what should be change in the function.
+
+```{r bfem.copy1.0, eval=FALSE}
+#Do not run
+#option 1: list with 3 obj. Same barrier taken as 2 different ones.
+inla.barrier.fem <- function (mesh, barrier.triangles, Omega = NULL) 
+  {
+    stopifnot(inherits(mesh, "inla.mesh"))
+    if (missing(barrier.triangles) && is.null(Omega)) 
+        stop("Input barrier triangles")
+    if (missing(barrier.triangles)) {
+    }
+    else {
+        #barrier.triangles <- unique(barrier.triangles) 
+        barrier.triangles.h <- barrier.triangles #layer with higher prob.
+        barrier.triangles.l <- barrier.triangles #layer with lower prob
+        t <- length(mesh$graph$tv[, 1])
+        remaining <- setdiff(1:t, barrier.triangles) # me quedo con los triangulos que sirven.
+        if (!is.null(Omega)) 
+            warning("Omega is replaced by barrier.triangles")
+        #triangles separated in lists. Prev code (next), with only 2 obj.
+        #Omega <- list(remaining, barrier.triangles) 
+        Omega <- list(remaining, barrier.triangles.h, barrier.triangles.l) #option 1
+        #option 1: list with 3 obj. Same barrier taken as 2 different ones.
+        #option 2: list with 2 obj. Maybe lower and higher prob triangles can be contain in the same list?
+    }
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        #index.i <- rep(0, len * 6)
+        index.i <- rep(0, len * 6)
+        #index.j <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        i.q <- rep(0, len * 6)
+        #Aij <- rep(0, len * 6)
+        Aijq <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                i.q[cpunter] <- px[i]
+                #Aij[counter] <- (twiceArea) * 1/12
+                Aijq[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+    if (requireNamespace("INLAspacetime")) {
+        warning("Using implementation from the `INLAspacetime` package")
+        fem <- INLAspacetime::mesh2fem.barrier(mesh = mesh, barrier.triangles = Omega[[2L]])
+    }
+    else {
+        warning(paste("Please install the `INLAspacetime` package\n", 
+            "which contains an implementation that runs faster!"))
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    }
+    return(fem)
+}
+```
+
+
+```{r bfem.copy1.1}
+#Doesn't work ´cause I'm using 'if (requireNamespace("INLAspacetime"))' line 519
+inla.barrier.fem.1.1 <- function (mesh, barrier.triangles, Omega = NULL) 
+  {
+    stopifnot(inherits(mesh, "inla.mesh"))
+    if (missing(barrier.triangles) && is.null(Omega)) 
+        stop("Input barrier triangles")
+    if (missing(barrier.triangles)) {
+    }
+    else {
+        #barrier.triangles <- unique(barrier.triangles) 
+        barrier.triangles.h <- barrier.triangles #layer with higher prob.
+        barrier.triangles.l <- barrier.triangles #layer with lower prob
+        t <- length(mesh$graph$tv[, 1])
+        remaining <- setdiff(1:t, barrier.triangles) # me quedo con los triangulos que sirven.
+        if (!is.null(Omega)) 
+            warning("Omega is replaced by barrier.triangles")
+        #Omega:option for creating a set of permeable barriers
+        #triangles separated in lists. Prev code (next), with only 2 obj.
+        #Omega <- list(remaining, barrier.triangles) 
+        Omega <- list(remaining, barrier.triangles.h, barrier.triangles.l) #option 1
+        #option 1: list with 3 obj. Same barrier taken as 2 different ones.
+        #option 2: list with 2 obj. Maybe lower and higher prob triangles can be contain in the same list?
+    }
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        index.i <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        #index.q <- rep(0, len * 6)
+        Aij <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                #index.q[counter] <- px[i]
+                Aij[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+    if (requireNamespace("INLAspacetime")) {
+        warning("Using implementation from the `INLAspacetime` package")
+       fem <- INLAspacetime::mesh2fem.barrier(mesh = mesh, barrier.triangles = Omega[[2L]]) 
+      #fem <- INLAspacetime::mesh2fem.barrier(mesh = mesh, barrier.triangles = list(Omega[[2L]],Omega[[3L]]))
+    }
+    else {
+        warning(paste("Please install the `INLAspacetime` package\n", 
+            "which contains an implementation that runs faster!"))
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    }
+    return(fem)
+}
+```
+
+```{r bfem.copy1.2}
+#Get rid of: unnecesary 'if'
+#'if (requireNamespace("INLAspacetime"))'
+#I'm still using creating Omega in the fx.
+#barrier triangles are both the same area
+
+inla.barrier.fem.1.2 <- function (mesh, barrier.triangles, Omega = NULL) 
+  {
+    stopifnot(inherits(mesh, "inla.mesh"))
+    if (missing(barrier.triangles) && is.null(Omega)) 
+        stop("Input barrier triangles")
+    if (missing(barrier.triangles)) {
+    }
+    else {
+        #barrier.triangles <- unique(barrier.triangles) 
+        barrier.triangles.h <- barrier.triangles #layer with higher prob.
+        barrier.triangles.l <- barrier.triangles #layer with lower prob
+        t <- length(mesh$graph$tv[, 1])
+        remaining <- setdiff(1:t, barrier.triangles) # me quedo con los triangulos que sirven.
+        if (!is.null(Omega)) 
+            warning("Omega is replaced by barrier.triangles")
+        #Omega:option for creating a set of permeable barriers
+        #triangles separated in lists. Prev code (next), with only 2 obj.
+        #Omega <- list(remaining, barrier.triangles) 
+        Omega <- list(remaining, barrier.triangles.h, barrier.triangles.l) #option 1
+        #option 1: list with 3 obj. Same barrier taken as 2 different ones.
+        #option 2: list with 2 obj. Maybe lower and higher prob triangles can be contain in the same list?
+    }
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        index.i <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        #index.q <- rep(0, len * 6)
+        Aij <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                #index.q[counter] <- px[i]
+                Aij[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    
+    return(fem)
+}
+```
+
+```{r bfem.copy1.2}
+#Get rid of: unnecesary 'if'
+#'if (requireNamespace("INLAspacetime"))'
+#I'm still using creating Omega in the fx.
+#barrier triangles are both the same area
+
+inla.barrier.fem.1.2 <- function (mesh, barrier.triangles, Omega = NULL) 
+  {
+    stopifnot(inherits(mesh, "inla.mesh"))
+    if (missing(barrier.triangles) && is.null(Omega)) 
+        stop("Input barrier triangles")
+    if (missing(barrier.triangles)) {
+    }
+    else {
+        #barrier.triangles <- unique(barrier.triangles) 
+        barrier.triangles.h <- barrier.triangles #layer with higher prob.
+        barrier.triangles.l <- barrier.triangles #layer with lower prob
+        t <- length(mesh$graph$tv[, 1])
+        remaining <- setdiff(1:t, barrier.triangles) # me quedo con los triangulos que sirven.
+        if (!is.null(Omega)) 
+            warning("Omega is replaced by barrier.triangles")
+        #Omega:option for creating a set of permeable barriers
+        #triangles separated in lists. Prev code (next), with only 2 obj.
+        #Omega <- list(remaining, barrier.triangles) 
+        Omega <- list(remaining, barrier.triangles.h, barrier.triangles.l) #option 1
+        #option 1: list with 3 obj. Same barrier taken as 2 different ones.
+        #option 2: list with 2 obj. Maybe lower and higher prob triangles can be contain in the same list?
+    }
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        index.i <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        #index.q <- rep(0, len * 6)
+        Aij <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                #index.q[counter] <- px[i]
+                Aij[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    
+    return(fem)
+}
+```
+
+```{r bfem.copy1.3}
+#based inla.barrier.fem.1.2 version
+#list of 3 Omega
+
+inla.barrier.fem.1.3 <- function (mesh, barrier.triangles, Omega = NULL) 
+  {
+    stopifnot(inherits(mesh, "inla.mesh"))
+    if (missing(barrier.triangles) && is.null(Omega)) 
+        stop("Input barrier triangles")
+    if (missing(barrier.triangles)) {
+    }
+    else {
+        #barrier.triangles <- unique(barrier.triangles) 
+        barrier.triangles.h <- barrier.triangles #layer with higher prob.
+        barrier.triangles.m <- barrier.triangles #layer with mid prob
+        barrier.triangles.l <- barrier.triangles #layer with lower prob
+        t <- length(mesh$graph$tv[, 1])
+        remaining <- setdiff(1:t, barrier.triangles) # me quedo con los triangulos que sirven.
+        if (!is.null(Omega)) 
+            warning("Omega is replaced by barrier.triangles")
+        #Omega:option for creating a set of permeable barriers
+        #triangles separated in lists. Prev code (next), with only 2 obj.
+        #Omega <- list(remaining, barrier.triangles) 
+        Omega <- list(remaining, barrier.triangles.h, barrier.triangles.m, barrier.triangles.l) #option 1
+        #option 1: list with 3 obj. Same barrier taken as 2 different ones.
+        #option 2: list with 2 obj. Maybe lower and higher prob triangles can be contain in the same list?
+    }
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        index.i <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        #index.q <- rep(0, len * 6)
+        Aij <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                #index.q[counter] <- px[i]
+                Aij[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    
+    return(fem)
+}
+```
+
+```{r bfem.copy1.4}
+#based on 1.2
+#Get rid of: unnecesary 'if'
+#'stopifnot(inherits(mesh, "inla.mesh"))...if (missing(barrier.triangles) && is.null(Omega))...'
+#'Omega = NULL'
+
+inla.barrier.fem.1.4 <- function (mesh, barrier.triangles) 
+  {
+        #barrier.triangles <- unique(barrier.triangles) 
+        barrier.triangles.h <- barrier.triangles #layer with higher prob.
+        barrier.triangles.l <- barrier.triangles #layer with lower prob
+        t <- length(mesh$graph$tv[, 1])
+        remaining <- setdiff(1:t, barrier.triangles) # me quedo con los triangulos que sirven.
+        #Omega:option for creating a set of permeable barriers
+        #triangles separated in lists. Prev code (next), with only 2 obj.
+        #Omega <- list(remaining, barrier.triangles) 
+        Omega <- list(remaining, barrier.triangles.h, barrier.triangles.l) #option 1
+        #option 1: list with 3 obj. Same barrier taken as 2 different ones.
+        #option 2: list with 2 obj. Maybe lower and higher prob triangles can be contain in the same list?
+    
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        index.i <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        #index.q <- rep(0, len * 6)
+        Aij <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                #index.q[counter] <- px[i]
+                Aij[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    
+    return(fem)
+}
+```
+
+```{r bfem.copy1.5}
+#erased all the unnecesary 'if'
+#Omega = n
+
+inla.barrier.fem.1.5 <- function (mesh, barrier.triangles, n = 1) 
+  {
+  if (n == 1) { ##original fx fem
+    barrier.triangles <- unique(barrier.triangles) 
+    t <- length(mesh$graph$tv[, 1])
+    remaining <- setdiff(1:t, barrier.triangles)
+    Omega <- list(remaining, barrier.triangles) 
+  } 
+  else {
+    t <- length(mesh$graph$tv[, 1])
+    Omega <- list()
+    Omega$remaining <- setdiff(1:t, barrier.triangles)
+    for (k in 1:n) {
+      Omega[k+1] <- unique(barrier.triangles) 
+      names(Omega)[k+1] <- paste0("barrier.triangles.", k)
+    }
+  }
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        index.i <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        #index.q <- rep(0, len * 6)
+        Aij <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                #index.q[counter] <- px[i]
+                Aij[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    
+    return(fem)
+}
+```
+
+THE RIGHT ONE
+
+```{r bfem.copy1.6}
+#what if barrier triagles with different r do not belong to the same area?
+#Do not use barrier.triangles.h = barrier.triangles.h = ...
+
+inla.barrier.fem.1.6 <- function (mesh, barrier.triangles) 
+  {
+  n <- length(barrier.triangles) #barrier triangles list
+  t <- length(mesh$graph$tv[, 1])
+  total_triangles <- unlist(barrier.triangles)
+  Omega <- list()
+  Omega$remaining <- setdiff(1:t, total_triangles)
+  for (k in 1:n) {
+    Omega[k+1] <- barrier.triangles[k] 
+    names(Omega)[k+1] <- paste0("barrier.triangles.", k)
+  }
+  
+    dt.fem.white <- function(mesh, subdomain) {
+        Ck <- rep(0, mesh$n)
+        for (t in subdomain) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+        return(Ck)
+    }
+    dt.fem.identity <- function(mesh) {
+        len <- length(mesh$graph$tv[, 1])
+        index.i <- rep(0, len * 6)
+        index.j <- rep(0, len * 6)
+        #index.q <- rep(0, len * 6)
+        Aij <- rep(0, len * 6)
+        counter <- 1
+        for (t in 1:len) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            twiceArea <- abs(det(Ts))
+            for (i in 1:3) {
+                index.i[counter] <- px[i]
+                index.j[counter] <- px[i]
+                #index.q[counter] <- px[i]
+                Aij[counter] <- (twiceArea) * 1/12
+                counter <- counter + 1
+            }
+            for (i in 1:2) {
+                for (j in (i + 1):3) {
+                  index.i[counter] <- px[i]
+                  index.j[counter] <- px[j]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                  index.i[counter] <- px[j]
+                  index.j[counter] <- px[i]
+                  Aij[counter] <- (twiceArea) * 1/24
+                  counter <- counter + 1
+                }
+            }
+        }
+        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(I)
+    }
+    dt.fem.laplace <- function(mesh, subdomain) {
+        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+        len <- length(subdomain)
+        index.i <- rep(0, len * 9)
+        index.j <- rep(0, len * 9)
+        Aij <- rep(0, len * 9)
+        counter <- 1
+        for (tri in subdomain) {
+            px <- mesh$graph$tv[tri, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            TTTinv <- solve(t(Ts) %*% Ts)
+            area <- abs(det(Ts)) * 0.5
+            for (k in 1:3) {
+                for (m in 1:3) {
+                  tmp <- (3 * m + k - 4) * length(subdomain)
+                  index.i[(tmp + counter)] <- px[k]
+                  index.j[(tmp + counter)] <- px[m]
+                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                    2)])
+                }
+            }
+            counter <- counter + 1
+        }
+        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+            dims = c(mesh$n, mesh$n), repr = "T")
+        return(Dk)
+    }
+    xi <- length(Omega)
+        fem <- list()
+        fem$I <- dt.fem.identity(mesh)
+        fem$D <- list()
+        fem$C <- list()
+        for (k in 1:xi) {
+            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+        }
+        for (k in 1:xi) {
+            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+        }
+        fem$hdim <- xi
+    
+    return(fem)
+}
+
+```
+
+```{r bfem.draft.fx.Janet}
+inla.barrier.fem.1.2. <- function (mesh, barrier.triangles, Omega = NULL) 
+{
+  stopifnot(inherits(mesh, "inla.mesh"))
+  if (missing(barrier.triangles) && is.null(Omega)) 
+    stop("Input barrier triangles")
+  if (missing(barrier.triangles)) {
+  }
+  else {
+    #barrier.triangles <- unique(barrier.triangles) b
+    num_bar <- length(barrier.triangles)
+    
+    #     for (jj in 1:num_bar){
+    #        paste("barrier.triangles",jj, sep = '') <- unlist(barrier.triangles[jj])}
+    #layer with lower prob
+    t <- length(mesh$graph$tv[, 1])
+    remaining <- setdiff(1:t, unlist(barrier.triangles)) 
+    #if (!is.null(Omega)) 
+    #           warning("Omega is replaced by barrier.triangles")
+    #Omega:option for creating a set of permeable barriers
+    #triangles separated in lists. Prev code (next), with only 2 obj.
+    #Omega <- list(remaining, barrier.triangles) 
+    Omega <- list(remaining, barrier.triangles) #option 1
+    #option 1: list with 3 obj. Same barrier taken as 2 different ones.
+    #option 2: list with 2 obj. Maybe lower and higher prob triangles can be contain in the same list?
+  }
+  
+  dt.fem.white <- function(mesh, subdomain) {
+    Ck <- rep(0, mesh$n)
+    for (t in subdomain) {
+      px <- mesh$graph$tv[t, ]
+      temp <- mesh$loc[px, ]
+      p1 <- t(t(temp[1, c(1, 2)]))
+      p2 <- t(t(temp[2, c(1, 2)]))
+      p3 <- t(t(temp[3, c(1, 2)]))
+      Ts <- cbind(p2 - p1, p3 - p1)
+      area <- abs(det(Ts)) * 0.5
+      for (i in 1:3) {
+        Ck[px[i]] <- Ck[px[i]] + area
+      }
+    }
+    return(Ck)
+  }
+  dt.fem.identity <- function(mesh) {
+    len <- length(mesh$graph$tv[, 1])
+    index.i <- rep(0, len * 6)
+    index.j <- rep(0, len * 6)
+    #index.q <- rep(0, len * 6)
+    Aij <- rep(0, len * 6)
+    counter <- 1
+    for (t in 1:len) {
+      px <- mesh$graph$tv[t, ]
+      temp <- mesh$loc[px, ]
+      p1 <- t(t(temp[1, c(1, 2)]))
+      p2 <- t(t(temp[2, c(1, 2)]))
+      p3 <- t(t(temp[3, c(1, 2)]))
+      Ts <- cbind(p2 - p1, p3 - p1)
+      twiceArea <- abs(det(Ts))
+      for (i in 1:3) {
+        index.i[counter] <- px[i]
+        index.j[counter] <- px[i]
+        #index.q[counter] <- px[i]
+        Aij[counter] <- (twiceArea) * 1/12
+        counter <- counter + 1
+      }
+      for (i in 1:2) {
+        for (j in (i + 1):3) {
+          index.i[counter] <- px[i]
+          index.j[counter] <- px[j]
+          Aij[counter] <- (twiceArea) * 1/24
+          counter <- counter + 1
+          index.i[counter] <- px[j]
+          index.j[counter] <- px[i]
+          Aij[counter] <- (twiceArea) * 1/24
+          counter <- counter + 1
+        }
+      }
+    }
+    I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+                      dims = c(mesh$n, mesh$n), repr = "T")
+    return(I)
+  }
+  dt.fem.laplace <- function(mesh, subdomain) {
+    Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+    len <- length(subdomain)
+    index.i <- rep(0, len * 9)
+    index.j <- rep(0, len * 9)
+    Aij <- rep(0, len * 9)
+    counter <- 1
+    for (tri in subdomain) {
+      px <- mesh$graph$tv[tri, ]
+      temp <- mesh$loc[px, ]
+      p1 <- t(t(temp[1, c(1, 2)]))
+      p2 <- t(t(temp[2, c(1, 2)]))
+      p3 <- t(t(temp[3, c(1, 2)]))
+      Ts <- cbind(p2 - p1, p3 - p1)
+      TTTinv <- solve(t(Ts) %*% Ts)
+      area <- abs(det(Ts)) * 0.5
+      for (k in 1:3) {
+        for (m in 1:3) {
+          tmp <- (3 * m + k - 4) * length(subdomain)
+          index.i[(tmp + counter)] <- px[k]
+          index.j[(tmp + counter)] <- px[m]
+          Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+                                                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+                                                                                            2)])
+        }
+      }
+      counter <- counter + 1
+    }
+    Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+                       dims = c(mesh$n, mesh$n), repr = "T")
+    return(Dk)
+  }
+  xi <- num_bar
+  fem <- list()
+  fem$I <- dt.fem.identity(mesh)
+  fem$D <- list()
+  fem$C <- list()
+  fem$D[[1]] <- dt.fem.laplace(mesh, Omega[[1]])
+  fem$C[[1]] <- dt.fem.white(mesh, Omega[[1]])
+  for (k in 1:xi) {
+    fem$D[[k+1]] <- dt.fem.laplace(mesh, Omega[[2]][[k]])
+  }
+  for (k in 1:xi) {
+    fem$C[[k+1]] <- dt.fem.white(mesh, Omega[[2]][[k]])
+  }
+  fem$hdim <- xi + 1
+  
+  return(fem)
+}
+```
+
+```{r bfem.fx.trials}
+#inla.barrier.fem line 208
+#trials for my built functions
+
+#original
+inla.barrier.fem(mesh, triBarrier) 
+#modified
+inla.barrier.fem.1.1(mesh, triBarrier) #using INLAspace time - won't give the 3 matrices
+inla.barrier.fem.1.2(mesh, triBarrier) #gives the 3 matrices - 1I, 3D, 3C, hdim 3
+inla.barrier.fem.1.3(mesh, triBarrier) #gives the 4 matrices
+inla.barrier.fem.1.4(mesh, triBarrier) #gives the 3 matrices. fx 1.4 has one removed 'if'
+inla.barrier.fem.1.5(mesh, triBarrier) #n=1
+inla.barrier.fem.1.5(mesh, triBarrier, n=2) #n=2
+inla.barrier.fem.1.5(mesh, triBarrier, n=3) 
+
+inla.barrier.fem(mesh, triBarrier)$D
+inla.barrier.fem.1.1(mesh, triBarrier)$D
+```
+
+```{r mats trial}
+##Draft function Janet August 20
+mat <- inla.barrier.fem.1.2.(mesh, list(triBarrier1, triBarrier2))
+mat1 <- inla.barrier.fem(mesh, triBarrier)
+#Test
+r1 = 1
+r2 = 0.5
+r3 = 0.5
+A = mat$I - 1/8*(r1^2*mat$D[[1]] + r2^2*mat$D[[2]] +  r3^2*mat$D[[3]])
+A1 = mat1$I - 1/8*(r1^2*mat1$D[[1]] + r2^2*mat1$D[[2]])
+
+sum1.2. <- sum(A - A1)
+
+## Draft function if barrier is the same?
+mat <- inla.barrier.fem.1.2.(mesh, list(triBarrier, triBarrier))
+mat1 <- inla.barrier.fem(mesh, triBarrier)
+#Test
+A = mat$I - 1/8*(r1^2*mat$D[[1]] + r2^2*mat$D[[2]] +  r3^2*mat$D[[3]])
+A1 = mat1$I - 1/8*(r1^2*mat1$D[[1]] + r2^2*mat1$D[[2]])
+
+sum1.2.b <- sum(A - A1)
+
+## inla.barrier.fem.1.2 test
+mat <- inla.barrier.fem.1.2(mesh, triBarrier)
+mat1 <- inla.barrier.fem(mesh, triBarrier)
+#Test
+A = mat$I - 1/8*(r1^2*mat$D[[1]] + r2^2*mat$D[[2]] +  r3^2*mat$D[[3]])
+A1 = mat1$I - 1/8*(r1^2*mat1$D[[1]] + r2^2*mat1$D[[2]])
+
+sum1.2 <- sum(A - A1)
+
+## inla.barrier.fem.1.6 test 1 barrier
+mat <- inla.barrier.fem.1.6(mesh, triBarrier)
+mat1 <- inla.barrier.fem(mesh, triBarrier)
+#Test
+A = mat$I - 1/8*(r1^2*mat$D[[1]] + r2^2*mat$D[[2]] +  r3^2*mat$D[[3]])
+A1 = mat1$I - 1/8*(r1^2*mat1$D[[1]] + r2^2*mat1$D[[2]])
+
+sum1.6 <- sum(A - A1)
+
+## inla.barrier.fem.1.2. 1 barrier test
+mat <- inla.barrier.fem.1.2.(mesh, triBarrier)
+mat1 <- inla.barrier.fem(mesh, triBarrier)
+#Test
+A = mat$I - 1/8*(r1^2*mat$D[[1]] + r2^2*mat$D[[2]] +  r3^2*mat$D[[3]])
+A1 = mat1$I - 1/8*(r1^2*mat1$D[[1]] + r2^2*mat1$D[[2]])
+
+sum1.2.c <- sum(A - A1)
+
+## inla.barrier.fem.1.6 test 2 barriers
+mat <- inla.barrier.fem.1.6(mesh, list(triBarrier1, triBarrier2))
+mat1 <- inla.barrier.fem(mesh, triBarrier)
+#Test
+A = mat$I - 1/8*(r1^2*mat$D[[1]] + r2^2*mat$D[[2]] +  r3^2*mat$D[[3]])
+A1 = mat1$I - 1/8*(r1^2*mat1$D[[1]] + r2^2*mat1$D[[2]])
+
+sum1.6b <- sum(A - A1)
+```
+
+See, it only works if there's 0 overlap between barrier traingles.
+
+It onlys works if there's 0 overlap between mesh traingles, check theory from bakka..
+
+```{r bfem.fx.line.trials, eval=FALSE}
+#fx 1.5
+t <- length(mesh$graph$tv[, 1])
+Omega <- list()
+Omega$remaining <- setdiff(1:t, triBarrier)
+# Omega$barrier.triangles <- list()
+n = 3
+
+#try 1
+for (k in 1:n) {
+      Omega[k] <- unique(barrier.triangles) 
+}
+
+str(Omega)
+
+#try 2
+for (k in 1:n) {
+      Omega[k] <- unique(barrier.triangles) 
+      names(Omega)[k] <- paste0("barrier.triangles.", k)
+}
+Omega$remaining <- setdiff(1:t, triBarrier)
+
+str(Omega)
+
+#try 3
+Omega$remaining <- setdiff(1:t, triBarrier)
+for (k in 1:n) {
+      Omega[k+1] <- unique(barrier.triangles) 
+      names(Omega)[k+1] <- paste0("barrier.triangles.", k)
+}
+
+str(Omega)
+
+#other whatever tries
+unlist(Omega$barrier.triangles)   
+Omega$barrier.triangles
+
+for(k in 1:n) {
+  assign(paste0(Omega$barrier.triangles, 1), barrier.triangles)
+}
+
+t <- length(mesh$graph$tv[, 1])
+Omega <- list()
+Omega$remaining <- setdiff(1:t, triBarrier)
+Omega$barrier.triangles <- list()
+n = 3
+
+for (k in 1:n) {
+      Omega$barrier.triangles[k] <- paste0(barrier.triangles, k)
+}
+
+unlist(Omega$barrier.triangles)   
+Omega$barrier.triangles
+
+
+
+#bfem line 208
+#try line of my functions to check if they work.
+mesh <- inla.mesh.2d(
+    loc.domain = domain, 
+    max.edge = c(0.03, 0.1) * r,
+    offset = c(0.1, 0.3) * r,
+    cutoff = 0.01 * r)
+
+
+t <- length(mesh$graph$tv[, 1])
+barrier.triangles1 = setdiff(1:t, triBarrier1) ##remaining in bfem=barrier triangles in Bakka
+barrier.triangles2 = setdiff(1:t, triBarrier2)
+
+length(triBarrier1); length(triBarrier2); (length(triBarrier2)-length(triBarrier1))
+length(barrier.triangles1); length(barrier.triangles2); (length(barrier.triangles2)-length(barrier.triangles1))
+
+length(barrier.triangles1)
+length(unique(barrier.triangles1))
+
+omega <- list(barrier.triangles1, triBarrier1)
+!is.null(omega)
+
+Ck <- rep(0, mesh$n)
+
+mesh$graph$tv#[t, ]
+mesh$loc#[px, ]
+
+for (t in 1:t) {
+            px <- mesh$graph$tv[t, ]
+            temp <- mesh$loc[px, ]
+            p1 <- t(t(temp[1, c(1, 2)]))
+            p2 <- t(t(temp[2, c(1, 2)]))
+            p3 <- t(t(temp[3, c(1, 2)]))
+            Ts <- cbind(p2 - p1, p3 - p1)
+            area <- abs(det(Ts)) * 0.5
+            for (i in 1:3) {
+                Ck[px[i]] <- Ck[px[i]] + area
+            }
+        }
+Ck
+length(Ck)
+```
+
+```{r inla.barrier.q function}
+inla.barrier.q
+
+function (fem, ranges, sigma = 1, envir = NULL) 
+{
+    if (is.null(ranges)) 
+        stop("ranges cannot be NULL")
+    if (any(is.na(ranges))) 
+        stop("No range can be NA")
+    xi <- length(ranges)
+    if (xi != length(fem$D)) {
+        print("inla.barrier.q has encountered an error. Will stop.")
+        stop("Ranges do no correspond to fem")
+    }
+    if (any(ranges < 0.001)) {
+        warning("This hyper parameter value may fail. A very small maximum edge length needed in the mesh.")
+    }
+    Cdiag <- ranges[1]^2 * fem$C[[1]]
+    if (xi > 1) {
+        for (k in 2:xi) {
+            Cdiag <- Cdiag + ranges[k]^2 * fem$C[[k]]
+        }
+    }
+    N <- length(Cdiag)
+    Cinv <- sparseMatrix(i = 1:N, j = 1:N, x = 1/Cdiag, dims = c(N, 
+        N), repr = "T")
+    A <- fem$I
+    for (k in 1:xi) {
+        A <- A + (ranges[k]^2/8) * fem$D[[k]]
+    }
+    Q <- inla.as.sparse(t(A) %*% Cinv %*% A * (1/sigma^2)/pi * 
+        2 * 3)
+    if (is.environment(envir)) {
+        if (!exists("cache.done", envir = envir)) {
+            Qx.idx <- which(Q@i <= Q@j)
+            assign("Qx.idx", Qx.idx, envir = envir)
+            assign("cache.done", TRUE, envir = envir)
+        }
+        else {
+            Qx.idx <- get("Qx.idx", envir = envir)
+        }
+        return(Q@x[Qx.idx])
+    }
+    else {
+        return(Q)
+    }
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

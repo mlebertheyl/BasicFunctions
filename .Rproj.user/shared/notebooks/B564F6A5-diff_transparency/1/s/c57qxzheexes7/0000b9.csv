@@ -1,0 +1,2 @@
+"0","# - Overlay the barrier with add=T"
+"0","local.plot.field(u, sub=""plot(poly.bar.orginal, add=T)"")"

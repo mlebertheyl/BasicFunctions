@@ -1,0 +1,93 @@
+"0","inla.barrier.q"
+"1","function (fem, ranges, sigma = 1, envir = NULL) 
+"
+"1","{
+"
+"1","    if (is.null(ranges)) 
+"
+"1","        stop(""ranges cannot be NULL"")
+"
+"1","    if (any(is.na(ranges))) 
+"
+"1","        stop(""No range can be NA"")
+"
+"1","    xi <- length(ranges)
+"
+"1","    if (xi != length(fem$D)) {
+"
+"1","        print(""inla.barrier.q has encountered an error. Will stop."")
+"
+"1","        stop(""Ranges do no correspond to fem"")
+"
+"1","    }
+"
+"1","    if (any(ranges < 0.001)) {
+"
+"1","        warning(""This hyper parameter value may fail. A very small maximum edge length needed in the mesh."")
+"
+"1","    }
+"
+"1","    Cdiag <- ranges[1]^2 * fem$C[[1]]
+"
+"1","    if (xi > 1) {
+"
+"1","        for (k in 2:xi) {
+"
+"1","            Cdiag <- Cdiag + ranges[k]^2 * fem$C[[k]]
+"
+"1","        }
+"
+"1","    }
+"
+"1","    N <- length(Cdiag)
+"
+"1","    Cinv <- sparseMatrix(i = 1:N, j = 1:N, x = 1/Cdiag, dims = c(N, 
+"
+"1","        N), repr = ""T"")
+"
+"1","    A <- fem$I
+"
+"1","    for (k in 1:xi) {
+"
+"1","        A <- A + (ranges[k]^2/8) * fem$D[[k]]
+"
+"1","    }
+"
+"1","    Q <- inla.as.sparse(t(A) %*% Cinv %*% A * (1/sigma^2)/pi * 
+"
+"1","        2 * 3)
+"
+"1","    if (is.environment(envir)) {
+"
+"1","        if (!exists(""cache.done"", envir = envir)) {
+"
+"1","            Qx.idx <- which(Q@i <= Q@j)
+"
+"1","            assign(""Qx.idx"", Qx.idx, envir = envir)
+"
+"1","            assign(""cache.done"", TRUE, envir = envir)
+"
+"1","        }
+"
+"1","        else {
+"
+"1","            Qx.idx <- get(""Qx.idx"", envir = envir)
+"
+"1","        }
+"
+"1","        return(Q@x[Qx.idx])
+"
+"1","    }
+"
+"1","    else {
+"
+"1","        return(Q)
+"
+"1","    }
+"
+"1","}
+"
+"1","<bytecode: 0x140264058>
+"
+"1","<environment: namespace:INLA>
+"

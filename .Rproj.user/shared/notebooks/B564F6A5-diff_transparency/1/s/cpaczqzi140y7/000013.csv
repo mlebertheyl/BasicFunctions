@@ -1,0 +1,4 @@
+"0","# - plot the posterior spatial marginal means"
+"0","# - we call this the spatial (smoothing) estimate"
+"0","# plot(poly.barrier, add=T, col='grey')"
+"0","# - Posterior spatial estimate using the Barrier model"

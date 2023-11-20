@@ -1,0 +1,6 @@
+"0","## --------------------------------------------------------------------------------"
+"0","range <- 3"
+"0","# - the spatial range parameter"
+"0","Q = inla.rgeneric.q(barrier.model, ""Q"", theta = c(0, log(range)))"
+"0","# - the precision matrix for fixed ranges"
+"0","# - Q is a function of the hyperparameters theta = c( log(sigma), log(range1), log(range2),...)"

@@ -1,0 +1,702 @@
+
+# inla.barrier.q.plus()
+
+```{r inla.barrier.q.plus}
+inla.barrier.q.plus <- function (fem, ranges, sigma = 1) 
+{
+    if (is.null(ranges)) 
+        stop("ranges cannot be NULL")
+    if (any(is.na(ranges))) 
+        stop("No range can be NA")
+    xi <- length(ranges)
+    if (xi != length(fem$D)) {
+        print("inla.barrier.q has encountered an error. Will stop.")
+        stop("Ranges do no correspond to fem")
+    }
+    if (any(ranges < 0.001)) {
+        warning("This hyper parameter value may fail. A very small maximum edge length needed in the mesh.")
+    }
+    Cdiag <- ranges[1]^2 * fem$C[[1]]
+    if (xi > 1) {
+        for (k in 2:xi) {
+            Cdiag <- Cdiag + ranges[k]^2 * fem$C[[k]] ##eq (9) 
+        }
+    }
+    N <- length(Cdiag)
+    Cinv <- sparseMatrix(i = 1:N, j = 1:N, x = 1/Cdiag, dims = c(N, 
+        N), repr = "T")
+    A <- fem$I
+    for (k in 1:xi) {
+        A <- A + (ranges[k]^2/8) * fem$D[[k]]
+    }
+    Q <- inla.as.sparse(t(A) %*% Cinv %*% A * (1/sigma^2)/pi * 
+        2 * 3)
+#    if (is.environment(envir)) {
+#        if (!exists("cache.done", envir = envir)) {
+#            Qx.idx <- which(Q@i <= Q@j)
+#            assign("Qx.idx", Qx.idx, envir = envir)
+#            assign("cache.done", TRUE, envir = envir)
+#        }
+#        else {
+#            Qx.idx <- get("Qx.idx", envir = envir)
+#        }
+#        return(Q@x[Qx.idx])
+#    }
+#    else {
+        return(Q)
+#    }
+  }
+
+```
+
+# inla.barrier.pcmatern.plus()
+
+```{r}
+inla.barrier.pcmatern.plus <- function (mesh, fem, barrier.triangles, prior.range, prior.sigma, range.fraction = 0.2) 
+{
+    if (missing(prior.range)) {
+        warning("Arbitrary prior values chosen automatically. This may suffice for a first attempt, \n            but should be changed in any serious analysis.")
+        prior.range <- c(diff(range(mesh$loc[, 1]))/5, 0.5)
+    }
+    if (missing(prior.sigma)) {
+        prior.sigma <- c(1, 0.5) 
+    }
+    stopifnot(inherits(mesh, "inla.mesh"))
+    stopifnot(range.fraction > 1e-06)
+#    if (requireNamespace("INLAspacetime")) {
+#        warning("Using implementation from the `INLAspacetime` package")
+#        return(INLAspacetime::barrierModel.define(mesh = mesh, 
+#            barrier.triangles = barrier.triangles, prior.range = prior.range, 
+#            prior.sigma = prior.sigma, range.fraction = range.fraction))
+#    }
+#    else {
+#        warning(paste("Please install the `INLAspacetime` package\n", 
+#            "which contains an implementation that runs faster!"))
+#    }
+    barrier.rgeneric.model <- function(cmd = c("graph", "Q", 
+        "mu", "initial", "log.norm.const", "log.prior", "quit"), 
+        theta = NULL) {
+        envir = parent.env(environment())
+        prior.sigma <- obj$prior.sigma
+        prior.range <- obj$prior.range
+        fem <- obj$fem
+        inla.barrier.q <- obj$inla.barrier.q
+        range.fraction <- obj$range.fraction
+        initial <- function(theta) {
+            initial.theta <- c()
+            if (!is.na(prior.sigma[2])) {
+                initial.theta <- c(0, initial.theta)
+            }
+            if (!is.na(prior.range[2])) {
+                initial.theta <- c(initial.theta, 0)
+            }
+            return(initial.theta)
+        }
+        log.prior <- function(theta) {
+            val <- 0
+            if (!is.na(prior.sigma[2])) {
+                lambda0 <- -log(prior.sigma[2])/prior.sigma[1]
+                val <- val + log(lambda0) - lambda0 * exp(theta[1]) + 
+                  theta[1]
+                theta.ran <- theta[-1]
+            }
+            else {
+                theta.ran <- theta
+            }
+            if (!is.na(prior.range[2])) {
+                lambda1 <- -log(prior.range[2]) * prior.range[1]
+                for (logrange in theta.ran) {
+                  val <- val + log(lambda1) - lambda1 * exp(-logrange) + 
+                    -logrange
+                }
+            }
+            return(val)
+        }
+        Q <- function(theta) {
+            theta.full <- theta
+            if (is.na(prior.sigma[2])) {
+                theta.full <- c(log(prior.sigma[1]), theta.full)
+            }
+            if (is.na(prior.range[2])) {
+                theta.full <- c(theta.full, log(prior.range[1]))
+            }
+            stopifnot(length(theta.full) == 2)
+            Q <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]), 
+                envir = envir) #ENVIR MAKES IT WORK
+            return(Q)
+        }
+        graph <- function(theta) {
+            require(methods)
+            ntheta <- 2
+            theta.full <- (1:ntheta)/3.217233456
+            G1 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]))
+            G1[G1 != 0] <- 1
+            theta.full <- (1:ntheta)^2/12.1543534
+            G2 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]))
+            G2[G2 != 0] <- 1
+            return(G1 + G2)
+        }
+        mu <- function(theta) numeric(0)
+        log.norm.const <- function(theta) numeric(0)
+        quit <- function(theta) invisible()
+        val <- do.call(match.arg(cmd), args = list(theta))
+        return(val)
+    }
+#   barrier.triangles <- unique(barrier.triangles)
+    obj <- list()
+    obj$prior.sigma <- prior.sigma
+    obj$prior.range <- prior.range
+    obj$range.fraction <- range.fraction
+    obj$inla.barrier.q <- inla.barrier.q
+    obj$fem <- fem
+    barrier.model <- inla.rgeneric.define(model = barrier.rgeneric.model, 
+        optimize = TRUE, obj = obj)
+    if (!is.na(prior.sigma[2]) && !is.na(prior.range[2])) {
+    }
+    else {
+        warning("Not properly tested, let us know if you have problems.")
+    }
+    return(barrier.model)
+}
+```
+
+
+```{r}
+inla.barrier.pcmatern.plus_ <- function (mesh, barrier.triangles, fem, prior.range, prior.sigma, range.fraction = 0.2) {
+  if (missing(prior.range)) {
+    warning("Arbitrary prior values chosen automatically. This may suffice for a first attempt, \n  but should be changed in any serious analysis.")
+    prior.range <- c(diff(range(mesh$loc[, 1]))/5, 0.5)
+  }
+  if (missing(prior.sigma)) {
+    prior.sigma <- c(1, 0.5) 
+  }
+  stopifnot(inherits(mesh, "inla.mesh"))
+  stopifnot(range.fraction > 1e-06)
+  #    if (requireNamespace("INLAspacetime")) {
+  #        warning("Using implementation from the `INLAspacetime` package")
+  #        return(INLAspacetime::barrierModel.define(mesh = mesh, 
+  #            barrier.triangles = barrier.triangles, prior.range = prior.range, 
+  #            prior.sigma = prior.sigma, range.fraction = range.fraction))
+  #    }
+  #    else {
+  #        warning(paste("Please install the `INLAspacetime` package\n", 
+  #            "which contains an implementation that runs faster!"))
+  #    }
+  barrier.rgeneric.model <- function(cmd = c("graph", "Q", 
+                                             "mu", "initial", "log.norm.const", "log.prior", "quit"), 
+                                     theta = NULL) {
+    envir = parent.env(environment())
+    prior.sigma <- obj$prior.sigma
+    prior.range <- obj$prior.range
+    fem <- obj$fem
+    inla.barrier.q <- obj$inla.barrier.q.plus
+    range.fraction <- obj$range.fraction
+    initial <- function(theta) {
+      initial.theta <- c()
+      if (!is.na(prior.sigma[2])) {
+        initial.theta <- c(0, initial.theta)
+      }
+      if (!is.na(prior.range[2])) {
+        initial.theta <- c(initial.theta, 0)
+      }
+      return(initial.theta)
+    }
+    log.prior <- function(theta) {
+      val <- 0
+      if (!is.na(prior.sigma[2])) {
+        lambda0 <- -log(prior.sigma[2])/prior.sigma[1]
+        val <- val + log(lambda0) - lambda0 * exp(theta[1]) + 
+          theta[1]
+        theta.ran <- theta[-1]
+      }
+      else {
+        theta.ran <- theta
+      }
+      if (!is.na(prior.range[2])) {
+        lambda1 <- -log(prior.range[2]) * prior.range[1]
+        for (logrange in theta.ran) {
+          val <- val + log(lambda1) - lambda1 * exp(-logrange) + 
+            -logrange
+        }
+      }
+      return(val)
+    }
+    Q <- function(theta) {
+      theta.full <- theta
+      if (is.na(prior.sigma[2])) {
+        theta.full <- c(log(prior.sigma[1]), theta.full)
+      }
+      if (is.na(prior.range[2])) {
+        theta.full <- c(theta.full, log(prior.range[1]))
+      }
+      stopifnot(length(theta.full) == 2)
+      Q <- inla.barrier.q.plus(fem = fem, ranges = exp(theta.full[2]) * 
+                                 c(1, range.fraction), sigma = exp(theta.full[1]), 
+                               envir = envir)
+      return(Q)
+    }
+    graph <- function(theta) {
+      require(methods)
+      ntheta <- 2
+      theta.full <- (1:ntheta)/3.217233456
+      G1 <- inla.barrier.q.plus(fem = fem, ranges = exp(theta.full[2]) * 
+                                  c(1, range.fraction), sigma = exp(theta.full[1]))
+      G1[G1 != 0] <- 1
+      theta.full <- (1:ntheta)^2/12.1543534
+      G2 <- inla.barrier.q.plus(fem = fem, ranges = exp(theta.full[2]) * 
+                                  c(1, range.fraction), sigma = exp(theta.full[1]))
+      G2[G2 != 0] <- 1
+      return(G1 + G2)
+    }
+    mu <- function(theta) numeric(0)
+    log.norm.const <- function(theta) numeric(0)
+    quit <- function(theta) invisible()
+    val <- do.call(match.arg(cmd), args = list(theta))
+    return(val)
+  }
+  #   barrier.triangles <- unique(barrier.triangles)
+  obj <- list()
+  obj$prior.sigma <- prior.sigma
+  obj$prior.range <- prior.range
+  obj$range.fraction <- range.fraction
+  obj$inla.barrier.q <- inla.barrier.q.plus
+  obj$fem <- inla.barrier.fem.plus(mesh, barrier.triangles = barrier.triangles)
+  barrier.model <- inla.rgeneric.define(model = barrier.rgeneric.model, 
+                                        optimize = TRUE, obj = obj)
+  if (!is.na(prior.sigma[2]) && !is.na(prior.range[2])) {
+  }
+  else {
+    warning("Not properly tested, let us know if you have problems.")
+  }
+  return(barrier.model)
+}
+```
+
+# inla.spde.pcmatern()
+
+```{r}
+# compare inla.spde.pcmatern with inla.spde.pcmatern.plus
+
+function (mesh, alpha = 2, param = NULL, constr = FALSE, extraconstr.int = NULL, 
+          extraconstr = NULL, fractional.method = c("parsimonious", 
+                                                    "null"), n.iid.group = 1, prior.range = NULL, prior.sigma = NULL) 
+{
+  if (inherits(mesh, "inla.mesh")) {
+    d <- 2
+  }
+  else if (inherits(mesh, "inla.mesh.1d")) {
+    d <- 1
+  }
+  else {
+    stop(paste("Unknown mesh class '", paste(class(mesh), 
+                                             collapse = ",", sep = ""), "'.", sep = ""))
+  }
+  if (missing(prior.range) || is.null(prior.range) || !is.vector(prior.range) || 
+      (length(prior.range) != 2)) {
+    stop("'prior.range' should be a length 2 vector 'c(range0,tailprob)' or a fixed range specified with 'c(range,NA)'.")
+  }
+  if (missing(prior.sigma) || is.null(prior.sigma) || !is.vector(prior.sigma) || 
+      (length(prior.sigma) != 2)) {
+    stop("'prior.sigma' should be a length 2 vector 'c(sigma0,tailprob)' or a fixed sigma specified with 'c(sigma,NA)'.")
+  }
+  if (prior.range[1] <= 0) {
+    stop("'prior.range[1]' must be a number greater than 0 specifying a spatial range")
+  }
+  if (prior.sigma[1] <= 0) {
+    stop("'prior.sigma[1]' must be a number greater than 0 specifying a standard deviation")
+  }
+  if (!is.na(prior.range[2]) && ((prior.range[2] <= 0) || (prior.range[2] >= 
+                                                           1))) {
+    stop("'prior.range[2]' must be a probaility strictly between 0 and 1 (or NA to specify a fixed range)")
+  }
+  if (!is.na(prior.sigma[2]) && ((prior.sigma[2] <= 0) || (prior.sigma[2] >= 
+                                                           1))) {
+    stop("'prior.sigma[2]' must be a probaility strictly between 0 and 1 (or NA to specify a fixed sigma)")
+  }
+  nu <- alpha - d/2
+  if (nu <= 0) {
+    stop(paste("Smoothness nu = alpha-dim/2 = ", nu, ", but must be > 0.", 
+               sep = ""))
+  }
+  kappa0 <- log(8 * nu)/2
+  tau0 <- 0.5 * (lgamma(nu) - lgamma(nu + d/2) - d/2 * log(4 * 
+                                                             pi)) - nu * kappa0
+  spde <- inla.spde2.matern(mesh = mesh, B.tau = cbind(tau0, 
+                                                       nu, -1), B.kappa = cbind(kappa0, -1, 0), alpha = alpha, 
+                            param = NULL, constr = constr, extraconstr.int = extraconstr.int, 
+                            extraconstr = extraconstr, fractional.method = fractional.method, 
+                            n.iid.group = n.iid.group)
+  is.fixed.range <- is.na(prior.range[2])
+  if (is.fixed.range) {
+    lam1 <- 0
+    initial.range <- log(prior.range[1])
+  }
+  else {
+    lam1 <- -log(prior.range[2]) * prior.range[1]^(d/2)
+    initial.range <- log(prior.range[1]) + 1
+  }
+  is.fixed.sigma <- is.na(prior.sigma[2])
+  if (is.fixed.sigma) {
+    lam2 <- 0
+    initial.sigma <- log(prior.sigma[1])
+  }
+  else {
+    lam2 <- -log(prior.sigma[2])/prior.sigma[1]
+    initial.sigma <- log(prior.sigma[1]) - 1
+  }
+  pcmatern.param = c(lam1, lam2, d)
+  spde$f$hyper.default <- list(theta1 = list(prior = "pcmatern", 
+                                             param = pcmatern.param, initial = initial.range, fixed = is.fixed.range), 
+                               theta2 = list(initial = initial.sigma, fixed = is.fixed.sigma))
+  spde$model = "pcmatern"
+  invisible(spde)
+}
+```
+
+# inla.barrier.q.plus_env()
+
+```{r}
+# inla.barrier.q.plus_env same as inla.barrier.q.plus, but I left the  ´if(is.environment(envir))´ statement
+
+inla.barrier.q.plus_env <- function (fem, ranges, sigma = 1) 
+{
+  if (is.null(ranges)) 
+    stop("ranges cannot be NULL")
+  if (any(is.na(ranges))) 
+    stop("No range can be NA")
+  xi <- length(ranges)
+  if (xi != length(fem$D)) {
+    print("inla.barrier.q has encountered an error. Will stop.")
+    stop("Ranges do no correspond to fem")
+  }
+  if (any(ranges < 0.001)) {
+    warning("This hyper parameter value may fail. A very small maximum edge length needed in the mesh.")
+  }
+  Cdiag <- ranges[1]^2 * fem$C[[1]]
+  if (xi > 1) {
+    for (k in 2:xi) {
+      Cdiag <- Cdiag + ranges[k]^2 * fem$C[[k]] ##eq (9) 
+    }
+  }
+  N <- length(Cdiag)
+  Cinv <- sparseMatrix(i = 1:N, j = 1:N, x = 1/Cdiag, dims = c(N, 
+                                                               N), repr = "T")
+  A <- fem$I
+  for (k in 1:xi) {
+    A <- A + (ranges[k]^2/8) * fem$D[[k]]
+  }
+  Q <- inla.as.sparse(t(A) %*% Cinv %*% A * (1/sigma^2)/pi * 
+                        2 * 3)
+  if (is.environment(envir)) {
+    if (!exists("cache.done", envir = envir)) {
+      Qx.idx <- which(Q@i <= Q@j)
+      assign("Qx.idx", Qx.idx, envir = envir)
+      assign("cache.done", TRUE, envir = envir)
+    }
+    else {
+      Qx.idx <- get("Qx.idx", envir = envir)
+    }
+    return(Q@x[Qx.idx])
+  }
+  else {
+    return(Q)
+  }
+}
+```
+
+# local.plot.field_()
+
+```{r}
+# local.plot.field_ same as local.plot.field, but I can modify the color paltte.
+
+library(wesanderson)
+# inla.barrier.polygon(mesh_kmD, barrier.triangles = barrier)
+# ~Documents/Research/BasicFunctions/TUTORIAL Simulation and Inference BM.Rmd
+# from: https://haakonbakkagit.github.io/btopic103.html
+local.plot.field_ = function(field, mesh, 
+                             xlim, ylim, 
+                             dims=c(300, 300), 
+                             pal, ...){
+  if (missing(xlim)) {
+        xlim = c(2, 8)
+  }
+  if (missing(ylim)) {
+        ylim = xlim
+  }
+  if (missing(pal)) {
+    pal = viridis::plasma(17)
+  }
+  
+  proj = inla.mesh.projector(mesh, xlim = xlim, 
+                             ylim = ylim, dims=c(300, 300))
+  # - Can project from the mesh onto a 300x300 grid 
+  #   for plots
+  field.proj = inla.mesh.project(proj, field)
+  # - Do the projection
+  image.plot(list(x = proj$x, y=proj$y, z = field.proj), 
+             xlim = xlim, ylim = ylim, col = pal, ...)  
+  # - Use image.plot to get nice colors and legend
+}
+# - This is the appropriate length of the field variable
+# print(mesh_kmD$n)
+```
+
+# local.plot.fieldpp()
+
+```{r}
+# pp has if(missing(xlim))...
+local.plot.fieldpp = function(field, mesh, poly.water, xlim, ylim, zlim, 
+                              dims=c(300, 300),...){
+ # poly.water = km_sp4msh, it has to be the SpatialPolygon object used in inla.mesh.2d
+ # Error when using the wrong mesh
+ stopifnot(length(field) == mesh$n)
+    
+ # Choose plotting region to be the same as the study area polygon
+ if (missing(xlim)) xlim = poly.water@bbox[1, ] 
+ if (missing(ylim)) ylim = poly.water@bbox[2, ]
+    
+ # Project the mesh onto a 300x300 grid   
+ proj = inla.mesh.projector(mesh, xlim = xlim,                              
+                            ylim = ylim, dims=c(300, 300)) 
+ # Do the projection 
+ field.proj = inla.mesh.project(proj, field)
+       
+ # Plot it
+ image.plot(list(x = proj$x, y=proj$y, z = field.proj), 
+               xlim = xlim, ylim = ylim, zlim = zlim, ...)  
+  }
+```
+
+SPDE BOOK FUNCTIONS
+file from https://github.com/jkbest2/PointProcessCoS/blob/master/spde-book/spde-book-functions.R
+
+```{r}
+library(fields)
+library(viridisLite)
+library(RColorBrewer)
+
+book.rMatern <- function(n, coords, sigma=1, range, kappa = sqrt(8*nu)/range, variance = sigma^2, nu=1) {
+    m <- as.matrix(dist(coords))
+    m <- exp((1-nu)*log(2) + nu*log(kappa*m)-
+             lgamma(nu))*besselK(m*kappa, nu)
+    diag(m) <- 1
+    return(drop(crossprod(chol(variance*m),
+                          matrix(rnorm(nrow(coords)*n), ncol=n))))
+}
+
+book.rspde <- function(coords, sigma=1, range, variance=sigma^2, alpha=2, kappa = sqrt(8*(alpha-1))/range, n=1, mesh, 
+                  verbose=FALSE, seed, return.attributes=FALSE) {
+    t0 <- Sys.time()
+    theta <- c(-0.5*log(4*pi*variance*kappa^2), log(kappa))
+    if (verbose) cat('theta =', theta, '\n')
+    if (missing(mesh)) {
+        mesh.pars <- c(0.5, 1, 0.1, 0.5, 1)*sqrt(alpha-ncol(coords)/2)/kappa 
+        if (verbose) cat('mesh.pars =', mesh.pars, '\n')
+        attributes <- list(
+            mesh=inla.mesh.2d(
+                coords[chull(coords), ], max.edge=mesh.pars[1:2], 
+                cutoff=mesh.pars[3], offset=mesh.pars[4:5]))
+        if (verbose) cat('n.mesh =', attributes$mesh$n, '\n')
+    }
+    else attributes <- list(mesh=mesh)
+    attributes$spde <- inla.spde2.matern(attributes$mesh, alpha=alpha)
+    attributes$Q <- inla.spde2.precision(attributes$spde, theta=theta)
+    attributes$A <- inla.mesh.project(mesh=attributes$mesh, loc=coords)$A
+    if (n==1) 
+        result <- drop(attributes$A%*%inla.qsample(
+            Q=attributes$Q,
+            constr=attributes$spde$f$extraconstr))
+    t1 <- Sys.time() 
+    result <- inla.qsample(n, attributes$Q, 
+                           seed=ifelse(missing(seed), 0, seed), 
+                           constr=attributes$spde$f$extraconstr) 
+    if (nrow(result)<nrow(attributes$A)) {
+        result <- rbind(result, matrix(
+            NA, nrow(attributes$A)-nrow(result), ncol(result)))
+        dimnames(result)[[1]] <- paste('x', 1:nrow(result), sep='')
+        for (j in 1:ncol(result)) 
+            result[, j] <- drop(attributes$A%*%
+                                result[1:ncol(attributes$A),j])
+    }
+    else {
+        for (j in 1:ncol(result)) 
+            result[1:nrow(attributes$A), j] <-
+                drop(attributes$A%*%result[,j]) 
+        result <- result[1:nrow(attributes$A), ]
+    }
+    t2 <- Sys.time()
+    attributes$cpu <- c(prep=t1-t0, sample=t2-t1, total=t2-t0)
+    if (return.attributes) 
+        attributes(result) <- c(attributes(result), attributes)
+    return(drop(result))
+}
+
+book.mesh.dual <- function(mesh) {
+    if (mesh$manifold=='R2') {
+        ce <- t(sapply(1:nrow(mesh$graph$tv), function(i)
+            colMeans(mesh$loc[mesh$graph$tv[i, ], 1:2])))
+        library(parallel)
+        pls <- mclapply(1:mesh$n, function(i) {
+            p <- unique(Reduce('rbind', lapply(1:3, function(k) {
+                j <- which(mesh$graph$tv[,k]==i)
+                if (length(j)>0) 
+                    return(rbind(ce[j, , drop=FALSE],
+                                 cbind(mesh$loc[mesh$graph$tv[j, k], 1] +
+                                       mesh$loc[mesh$graph$tv[j, c(2:3,1)[k]], 1], 
+                                       mesh$loc[mesh$graph$tv[j, k], 2] +
+                                       mesh$loc[mesh$graph$tv[j, c(2:3,1)[k]], 2])/2))
+                else return(ce[j, , drop=FALSE])
+            })))
+            j1 <- which(mesh$segm$bnd$idx[,1]==i)
+            j2 <- which(mesh$segm$bnd$idx[,2]==i)
+            if ((length(j1)>0) | (length(j2)>0)) {
+                p <- unique(rbind(mesh$loc[i, 1:2], p,
+                                  mesh$loc[mesh$segm$bnd$idx[j1, 1], 1:2]/2 +
+                                  mesh$loc[mesh$segm$bnd$idx[j1, 2], 1:2]/2, 
+                                  mesh$loc[mesh$segm$bnd$idx[j2, 1], 1:2]/2 +
+                                  mesh$loc[mesh$segm$bnd$idx[j2, 2], 1:2]/2))
+                yy <- p[,2]-mean(p[,2])/2-mesh$loc[i, 2]/2
+                xx <- p[,1]-mean(p[,1])/2-mesh$loc[i, 1]/2
+            }
+            else {
+                yy <- p[,2]-mesh$loc[i, 2]
+                xx <- p[,1]-mesh$loc[i, 1]
+            }
+            Polygon(p[order(atan2(yy,xx)), ])
+        })
+        return(SpatialPolygons(lapply(1:mesh$n, function(i)
+            Polygons(list(pls[[i]]), i))))
+    }
+    else stop("It only works for R2!")
+}
+
+genColor <- function(n, type=c('red', 'green', 'blue'), u=NULL) {
+    cbp <- list(
+        red = list(c(255, 254, 252, 252, 251, 239, 203, 165, 103), 
+                   c(245, 224, 187, 146, 106, 59, 24, 15, 0), 
+                   c(240, 210, 161, 114, 74, 44, 29, 21, 13)), 
+        green = list(c(247, 229, 199, 161, 116, 65, 35, 0, 0), 
+                     c(252, 245, 233, 217, 196, 171, 139, 109, 68), 
+                     c(245, 224, 192, 155, 118, 93, 69, 44, 27)), 
+        blue = list(c(247, 222, 198, 158, 107, 66, 33, 8, 8), 
+                    c(251, 235, 219, 202, 174, 146, 113, 81, 48), 
+                    c(255, 247, 239, 225, 214, 198, 181, 156, 107)))
+    if (n<2) stop("Works for 'n>2'!")
+    if (is.null(u))
+        u <- 0:(n-1)/(n-1)
+    u0 <- 0:8/8
+    i <- findInterval(u, u0, TRUE)
+    k <- pmatch(match.arg(type), c('red', 'green', 'blue'))
+    w1 <- 8*(u0[i+1]-u)/255; w2 <- 8*(u-u0[i])/255
+    rgb(cbp[[k]][[1]][i]*w1 + cbp[[k]][[1]][i+1]*w2, 
+        cbp[[k]][[2]][i]*w1 + cbp[[k]][[2]][i+1]*w2, 
+        cbp[[k]][[3]][i]*w1 + cbp[[k]][[3]][i+1]*w2)
+}
+
+plot.dgTMatrix <- function(x, y, ...) {
+    cl <- match.call()
+    if (is.null(cl$digits))
+        digits <- 2
+    z <- sort(unique(round(x@x, digits)))
+    nz <- length(z)
+    n1 <- sum(z<0)
+    n2 <- sum(z>0)
+    if (is.null(cl$colors)) 
+        if (any(c(n1,n2)==0)) 
+            colors <- gray(0.9*(1-(z-min(z))/diff(range(z))))
+        else
+            colors <- c(genColor(n1, 'red', z[z<0]/min(z)),
+                        rep('white', nz-n1-n2),
+                        genColor(n2, 'blue', z[z>0]/max(z)))
+    z.breaks <- c(z[1]-diff(z[1:2])/2,
+                  z[-nz]/2 + z[-1]/2,
+                  z[nz]+diff(z[nz-1:0])/2)
+    x@x <- round(x@x, digits)
+    image(x, at=z.breaks, col.regions=colors, ...)
+}
+
+book.plot.field <- function(field, mesh, projector, xlim, ylim, 
+			    dims=c(300,300), poly, asp = 1, 
+			    axes = FALSE, xlab = '', ylab = '', 
+			    col = book.color.c(), ...){
+  ## you can supply field as a matrix vector or like a named list with 'x', 'y' and 'z' as for image
+  ## when field is a vector, it will project it using projector, assuming projector will create a matrix 
+  ## when mesh is supplied and projector not, projector will be created and used to project field
+  if (missing(mesh)) {
+    if (missing(projector)) {
+      if (missing(xlim) | missing(ylim)) {
+        image.plot(field, asp = asp, axes = axes, 
+                   xlab = xlab, ylab = ylab, col = col, ...)
+      } else {
+        image.plot(field, xlim = xlim, ylim = ylim, asp = asp, 
+                   axes = axes, xlab = xlab, ylab = ylab, col = col, ...)
+      }
+    } else {
+      if (missing(xlim)) xlim <- range(projector$x)
+      if (missing(ylim)) ylim <- range(projector$y)
+      field.proj <- inla.mesh.project(projector, field)
+      image.plot(x = projector$x, y = projector$y, z = field.proj, 
+                 asp=asp, axes=axes, xlab = xlab, ylab = ylab, 
+                 col=col, xlim=xlim, ylim=ylim, ...)
+    }
+  } else {
+    if (missing(xlim)) xlim <- range(mesh$loc[,1])
+    if (missing(ylim)) ylim <- range(mesh$loc[,2])
+    projector <- inla.mesh.projector(mesh, xlim = xlim,
+                                     ylim = ylim, dims=dims)
+    field.proj <- inla.mesh.project(projector, field)
+    image.plot(x = projector$x, y = projector$y, z = field.proj, 
+               asp=asp, axes=axes, xlab = xlab, ylab = ylab, col=col, ...)
+  }
+  if (!missing(poly)) 
+      plot(poly, add = TRUE, col = 'grey')
+}
+
+## Functions for barrier models
+
+## Find the correlation of precision Q (defined on mesh) at location 
+book.spatial.correlation <- function(Q, location, mesh) {
+  ## The marginal standard deviations
+  sd <- sqrt(diag(inla.qinv(Q)))
+
+  ## Create a fake A matrix, to extract the closest mesh node index
+  A.tmp <- inla.spde.make.A(mesh = mesh,
+    loc = matrix(c(location[1], location[2]), 1, 2))
+  id.node = which.max(A.tmp[1, ])
+
+  ## Solve a matrix system to find just one column of the covariance matrix
+  Inode <- rep(0, dim(Q)[1])
+  Inode[id.node] <- 1
+  covar.column <- solve(Q, Inode)
+  corr <- drop(matrix(covar.column)) / (sd * sd[id.node])
+  return(corr)
+}
+
+## Continuous and discrete colour scales for the book
+# n=8; plot(1:n, col=brewer.pal(n = n, name = "Paired"))
+
+# Continuous
+book.color.c = function(n = 201) {
+  return(viridis(n))
+}
+
+# Continuous (alternative)
+book.color.c2 = function(n = 201) {
+  return(magma(n))
+}
+
+# Discrete from a continuous
+book.color.dc = function(n = 11) {
+  return(viridis(n))
+}
+
+# Discrete (cannot be interpolated)
+book.color.d = function(n=4) {
+  return(brewer.pal(n = n, name = "Paired"))
+}
+
+```
+

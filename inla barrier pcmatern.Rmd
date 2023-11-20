@@ -1,0 +1,261 @@
+
+INLA.BARRIER.PCMATERN
+
+```{r}
+inla.barrier.pcmatern.plus <- function (mesh, fem, barrier.triangles, prior.range, prior.sigma, range.fraction = 0.2) 
+{
+    if (missing(prior.range)) {
+        warning("Arbitrary prior values chosen automatically. This may suffice for a first attempt, \n            but should be changed in any serious analysis.")
+        prior.range <- c(diff(range(mesh$loc[, 1]))/5, 0.5)
+    }
+    if (missing(prior.sigma)) {
+        prior.sigma <- c(1, 0.5) 
+    }
+    stopifnot(inherits(mesh, "inla.mesh"))
+    stopifnot(range.fraction > 1e-06)
+#    if (requireNamespace("INLAspacetime")) {
+#        warning("Using implementation from the `INLAspacetime` package")
+#        return(INLAspacetime::barrierModel.define(mesh = mesh, 
+#            barrier.triangles = barrier.triangles, prior.range = prior.range, 
+#            prior.sigma = prior.sigma, range.fraction = range.fraction))
+#    }
+#    else {
+#        warning(paste("Please install the `INLAspacetime` package\n", 
+#            "which contains an implementation that runs faster!"))
+#    }
+    barrier.rgeneric.model <- function(cmd = c("graph", "Q", 
+        "mu", "initial", "log.norm.const", "log.prior", "quit"), 
+        theta = NULL) {
+        envir = parent.env(environment())
+        prior.sigma <- obj$prior.sigma
+        prior.range <- obj$prior.range
+        fem <- obj$fem
+        inla.barrier.q <- obj$inla.barrier.q
+        range.fraction <- obj$range.fraction
+        initial <- function(theta) {
+            initial.theta <- c()
+            if (!is.na(prior.sigma[2])) {
+                initial.theta <- c(0, initial.theta)
+            }
+            if (!is.na(prior.range[2])) {
+                initial.theta <- c(initial.theta, 0)
+            }
+            return(initial.theta)
+        }
+        log.prior <- function(theta) {
+            val <- 0
+            if (!is.na(prior.sigma[2])) {
+                lambda0 <- -log(prior.sigma[2])/prior.sigma[1]
+                val <- val + log(lambda0) - lambda0 * exp(theta[1]) + 
+                  theta[1]
+                theta.ran <- theta[-1]
+            }
+            else {
+                theta.ran <- theta
+            }
+            if (!is.na(prior.range[2])) {
+                lambda1 <- -log(prior.range[2]) * prior.range[1]
+                for (logrange in theta.ran) {
+                  val <- val + log(lambda1) - lambda1 * exp(-logrange) + 
+                    -logrange
+                }
+            }
+            return(val)
+        }
+        Q <- function(theta) {
+            theta.full <- theta
+            if (is.na(prior.sigma[2])) {
+                theta.full <- c(log(prior.sigma[1]), theta.full)
+            }
+            if (is.na(prior.range[2])) {
+                theta.full <- c(theta.full, log(prior.range[1]))
+            }
+            stopifnot(length(theta.full) == 2)
+            Q <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]), 
+                envir = envir) #ENVIR MAKES IT WORK
+            return(Q)
+        }
+        graph <- function(theta) {
+            require(methods)
+            ntheta <- 2
+            theta.full <- (1:ntheta)/3.217233456
+            G1 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]))
+            G1[G1 != 0] <- 1
+            theta.full <- (1:ntheta)^2/12.1543534
+            G2 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]))
+            G2[G2 != 0] <- 1
+            return(G1 + G2)
+        }
+        mu <- function(theta) numeric(0)
+        log.norm.const <- function(theta) numeric(0)
+        quit <- function(theta) invisible()
+        val <- do.call(match.arg(cmd), args = list(theta))
+        return(val)
+    }
+#   barrier.triangles <- unique(barrier.triangles)
+    obj <- list()
+    obj$prior.sigma <- prior.sigma
+    obj$prior.range <- prior.range
+    obj$range.fraction <- range.fraction
+    obj$inla.barrier.q <- inla.barrier.q
+    obj$fem <- fem
+    barrier.model <- inla.rgeneric.define(model = barrier.rgeneric.model, 
+        optimize = TRUE, obj = obj)
+    if (!is.na(prior.sigma[2]) && !is.na(prior.range[2])) {
+    }
+    else {
+        warning("Not properly tested, let us know if you have problems.")
+    }
+    return(barrier.model)
+}
+```
+
+
+```{r}
+mesh <- inla.mesh.2d(
+    loc.domain = domain, 
+    max.edge = c(0.03, 0.1) * r,
+    offset = c(0.1, 0.3) * r,
+    cutoff = 0.01 * r)
+bm.pcmatern <- inla.barrier.pcmatern(mesh, triBarrier)
+bm.pcmatern$f$rgeneric$definition
+inla.barrier.pcmatern.plus(mesh, list(triBarrier1,triBarrier2))
+```
+
+```{r}
+inla.barrier.pcmatern
+function (mesh, barrier.triangles, prior.range, prior.sigma, 
+    range.fraction = 0.2) 
+{
+    if (missing(prior.range)) {
+        warning("Arbitrary prior values chosen automatically. This may suffice for a first attempt, \n            but should be changed in any serious analysis.")
+        prior.range <- c(diff(range(mesh$loc[, 1]))/5, 0.5)
+    }
+    if (missing(prior.sigma)) {
+        prior.sigma <- c(1, 0.5)
+    }
+    stopifnot(inherits(mesh, "inla.mesh"))
+    stopifnot(range.fraction > 1e-06)
+    if (requireNamespace("INLAspacetime")) {
+        warning("Using implementation from the `INLAspacetime` package")
+        return(INLAspacetime::barrierModel.define(mesh = mesh, 
+            barrier.triangles = barrier.triangles, prior.range = prior.range, 
+            prior.sigma = prior.sigma, range.fraction = range.fraction))
+    }
+    else {
+        warning(paste("Please install the `INLAspacetime` package\n", 
+            "which contains an implementation that runs faster!"))
+    }
+    barrier.rgeneric.model <- function(cmd = c("graph", "Q", 
+        "mu", "initial", "log.norm.const", "log.prior", "quit"), 
+        theta = NULL) {
+        envir = parent.env(environment())
+        prior.sigma <- obj$prior.sigma
+        prior.range <- obj$prior.range
+        fem <- obj$fem
+        inla.barrier.q <- obj$inla.barrier.q
+        range.fraction <- obj$range.fraction
+        initial <- function(theta) {
+            initial.theta <- c()
+            if (!is.na(prior.sigma[2])) {
+                initial.theta <- c(0, initial.theta)
+            }
+            if (!is.na(prior.range[2])) {
+                initial.theta <- c(initial.theta, 0)
+            }
+            return(initial.theta)
+        }
+        log.prior <- function(theta) {
+            val <- 0
+            if (!is.na(prior.sigma[2])) {
+                lambda0 <- -log(prior.sigma[2])/prior.sigma[1]
+                val <- val + log(lambda0) - lambda0 * exp(theta[1]) + 
+                  theta[1]
+                theta.ran <- theta[-1]
+            }
+            else {
+                theta.ran <- theta
+            }
+            if (!is.na(prior.range[2])) {
+                lambda1 <- -log(prior.range[2]) * prior.range[1]
+                for (logrange in theta.ran) {
+                  val <- val + log(lambda1) - lambda1 * exp(-logrange) + 
+                    -logrange
+                }
+            }
+            return(val)
+        }
+        Q <- function(theta) {
+            theta.full <- theta
+            if (is.na(prior.sigma[2])) {
+                theta.full <- c(log(prior.sigma[1]), theta.full)
+            }
+            if (is.na(prior.range[2])) {
+                theta.full <- c(theta.full, log(prior.range[1]))
+            }
+            stopifnot(length(theta.full) == 2)
+            Q <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]), 
+                envir = envir)
+            return(Q)
+        }
+        graph <- function(theta) {
+            require(methods)
+            ntheta <- 2
+            theta.full <- (1:ntheta)/3.217233456
+            G1 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]))
+            G1[G1 != 0] <- 1
+            theta.full <- (1:ntheta)^2/12.1543534
+            G2 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+                c(1, range.fraction), sigma = exp(theta.full[1]))
+            G2[G2 != 0] <- 1
+            return(G1 + G2)
+        }
+        mu <- function(theta) numeric(0)
+        log.norm.const <- function(theta) numeric(0)
+        quit <- function(theta) invisible()
+        val <- do.call(match.arg(cmd), args = list(theta))
+        return(val)
+    }
+    barrier.triangles <- unique(barrier.triangles)
+    obj <- list()
+    obj$prior.sigma <- prior.sigma
+    obj$prior.range <- prior.range
+    obj$range.fraction <- range.fraction
+    obj$inla.barrier.q <- inla.barrier.q
+    obj$fem <- inla.barrier.fem(mesh, barrier.triangles = barrier.triangles)
+    barrier.model <- inla.rgeneric.define(model = barrier.rgeneric.model, 
+        optimize = TRUE, obj = obj)
+    if (!is.na(prior.sigma[2]) && !is.na(prior.range[2])) {
+    }
+    else {
+        warning("Not properly tested, let us know if you have problems.")
+    }
+    return(barrier.model)
+}
+inla.barrier.pcmatern
+```
+
+
+SOME CODE EXAMPLES IN:
+*https://haakonbakkagit.github.io/btopic103.html*
+*SPDE book: pg 177*
+
+```{r}
+inla.barrier.pcmatern()
+##EXAMPLE
+barrier.model = inla.barrier.pcmatern(mesh, barrier.triangles = barrier, prior.range = c(1.44, 0.5), prior.sigma = c(0.7, 0.5), range.fraction = 0.1)
+
+inla.rgeneric.q
+inla.barrier.polygon
+##EXAMPLE
+range = 3
+# - the spatial range parameter
+Q = inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
+```
+*https://haakonbakkagit.github.io/btopic103.html*
+*SPDE book: pg 177*

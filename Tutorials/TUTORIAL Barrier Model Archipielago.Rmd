@@ -1,0 +1,16 @@
+TUTORIAL: Barrier Model applied to the Archipielago Data.
+
+https://haakonbakkagit.github.io/btopic128.html#7_Plotting_Priors
+
+```{r}
+library(INLA)
+library(fields)
+library(rgeos)
+library(ggplot2)
+```
+
+```{r}
+load(file = "data/WebSiteData-Archipelago.RData")
+str(poly.water, 1)
+```
+

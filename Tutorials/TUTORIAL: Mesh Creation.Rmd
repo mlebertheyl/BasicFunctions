@@ -1,0 +1,18 @@
+# TUTORIAL: Mesh Creation including Coastlines
+https://haakonbakkagit.github.io/btopic104.html
+
+```{r}
+library(INLA); library(sp)
+
+set.seed(2016)
+set.inla.seed = 2016
+
+dir.create("data/")
+download.file(url = "https://haakonbakkagit.github.io/data/WebSiteData-Archipelago.RData", destfile = "data/WebSiteData-Archipelago.RData")
+```
+
+```{r}
+load(file = "data/WebSiteData-Archipelago.RData")
+str(poly.water, 1)
+```
+

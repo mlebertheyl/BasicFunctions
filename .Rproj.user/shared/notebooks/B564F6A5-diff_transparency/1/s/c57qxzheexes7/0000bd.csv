@@ -1,0 +1,4 @@
+"0",""
+"0","### 1,2 plots"
+"0","local.plot.field(u, main= ""Overlay left/right barrier"", "
+"0","                   sub = ""plot(poly.bar1, add=T, col='grey')"")"

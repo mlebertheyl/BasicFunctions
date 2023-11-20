@@ -1,0 +1,3 @@
+"0","# here transparency is not r directly, it's just the col=alpha('grey', 0.3)"
+"0",""
+"0","local.plot.field(u, sub = ""plot(add=T); plot(add=T, col=alpha('grey', 0.1))"")"

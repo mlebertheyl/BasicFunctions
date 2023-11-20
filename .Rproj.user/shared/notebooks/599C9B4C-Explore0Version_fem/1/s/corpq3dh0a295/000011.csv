@@ -1,0 +1,4 @@
+"0","triCenters <-"
+"0","        (mesh$loc[mesh$graph$tv[,1], ] +"
+"0","        mesh$loc[mesh$graph$tv[,2], ] +"
+"0","        mesh$loc[mesh$graph$tv[,3], ]) / 3"

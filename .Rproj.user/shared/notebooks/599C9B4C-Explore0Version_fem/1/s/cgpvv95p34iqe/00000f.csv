@@ -1,0 +1,2 @@
+"0","isInBarrier <- (splancs::inout(triCenters, barrier1)) |"
+"0","  (splancs::inout(triCenters, barrier2))"

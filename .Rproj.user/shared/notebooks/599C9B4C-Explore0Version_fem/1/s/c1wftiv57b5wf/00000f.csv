@@ -1,0 +1,1 @@
+"0","iV <- grep(""^Version"", readLines(system.file(""DESCRIPTION"", package = ""INLA"")), value = TRUE)"

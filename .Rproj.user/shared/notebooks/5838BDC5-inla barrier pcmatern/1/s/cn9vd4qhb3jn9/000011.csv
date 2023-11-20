@@ -1,0 +1,226 @@
+"0","inla.barrier.pcmatern
+"
+"1","function (mesh, barrier.triangles, prior.range, prior.sigma, 
+"
+"1","    range.fraction = 0.2) 
+"
+"1","{
+"
+"1","    if (missing(prior.range)) {
+"
+"1","        warning(""Arbitrary prior values chosen automatically. This may suffice for a first attempt, \n            but should be changed in any serious analysis."")
+"
+"1","        prior.range <- c(diff(range(mesh$loc[, 1]))/5, 0.5)
+"
+"1","    }
+"
+"1","    if (missing(prior.sigma)) {
+"
+"1","        prior.sigma <- c(1, 0.5)
+"
+"1","    }
+"
+"1","    stopifnot(inherits(mesh, ""inla.mesh""))
+"
+"1","    stopifnot(range.fraction > 1e-06)
+"
+"1","    if (requireNamespace(""INLAspacetime"")) {
+"
+"1","        warning(""Using implementation from the `INLAspacetime` package"")
+"
+"1","        return(INLAspacetime::barrierModel.define(mesh = mesh, 
+"
+"1","            barrier.triangles = barrier.triangles, prior.range = prior.range, 
+"
+"1","            prior.sigma = prior.sigma, range.fraction = range.fraction))
+"
+"1","    }
+"
+"1","    else {
+"
+"1","        warning(paste(""Please install the `INLAspacetime` package\n"", 
+"
+"1","            ""which contains an implementation that runs faster!""))
+"
+"1","    }
+"
+"1","    barrier.rgeneric.model <- function(cmd = c(""graph"", ""Q"", 
+"
+"1","        ""mu"", ""initial"", ""log.norm.const"", ""log.prior"", ""quit""), 
+"
+"1","        theta = NULL) {
+"
+"1","        envir = parent.env(environment())
+"
+"1","        prior.sigma <- obj$prior.sigma
+"
+"1","        prior.range <- obj$prior.range
+"
+"1","        fem <- obj$fem
+"
+"1","        inla.barrier.q <- obj$inla.barrier.q
+"
+"1","        range.fraction <- obj$range.fraction
+"
+"1","        initial <- function(theta) {
+"
+"1","            initial.theta <- c()
+"
+"1","            if (!is.na(prior.sigma[2])) {
+"
+"1","                initial.theta <- c(0, initial.theta)
+"
+"1","            }
+"
+"1","            if (!is.na(prior.range[2])) {
+"
+"1","                initial.theta <- c(initial.theta, 0)
+"
+"1","            }
+"
+"1","            return(initial.theta)
+"
+"1","        }
+"
+"1","        log.prior <- function(theta) {
+"
+"1","            val <- 0
+"
+"1","            if (!is.na(prior.sigma[2])) {
+"
+"1","                lambda0 <- -log(prior.sigma[2])/prior.sigma[1]
+"
+"1","                val <- val + log(lambda0) - lambda0 * exp(theta[1]) + 
+"
+"1","                  theta[1]
+"
+"1","                theta.ran <- theta[-1]
+"
+"1","            }
+"
+"1","            else {
+"
+"1","                theta.ran <- theta
+"
+"1","            }
+"
+"1","            if (!is.na(prior.range[2])) {
+"
+"1","                lambda1 <- -log(prior.range[2]) * prior.range[1]
+"
+"1","                for (logrange in theta.ran) {
+"
+"1","                  val <- val + log(lambda1) - lambda1 * exp(-logrange) + 
+"
+"1","                    -logrange
+"
+"1","                }
+"
+"1","            }
+"
+"1","            return(val)
+"
+"1","        }
+"
+"1","        Q <- function(theta) {
+"
+"1","            theta.full <- theta
+"
+"1","            if (is.na(prior.sigma[2])) {
+"
+"1","                theta.full <- c(log(prior.sigma[1]), theta.full)
+"
+"1","            }
+"
+"1","            if (is.na(prior.range[2])) {
+"
+"1","                theta.full <- c(theta.full, log(prior.range[1]))
+"
+"1","            }
+"
+"1","            stopifnot(length(theta.full) == 2)
+"
+"1","            Q <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+"
+"1","                c(1, range.fraction), sigma = exp(theta.full[1]), 
+"
+"1","                envir = envir)
+"
+"1","            return(Q)
+"
+"1","        }
+"
+"1","        graph <- function(theta) {
+"
+"1","            require(methods)
+"
+"1","            ntheta <- 2
+"
+"1","            theta.full <- (1:ntheta)/3.217233456
+"
+"1","            G1 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+"
+"1","                c(1, range.fraction), sigma = exp(theta.full[1]))
+"
+"1","            G1[G1 != 0] <- 1
+"
+"1","            theta.full <- (1:ntheta)^2/12.1543534
+"
+"1","            G2 <- inla.barrier.q(fem = fem, ranges = exp(theta.full[2]) * 
+"
+"1","                c(1, range.fraction), sigma = exp(theta.full[1]))
+"
+"1","            G2[G2 != 0] <- 1
+"
+"1","            return(G1 + G2)
+"
+"1","        }
+"
+"1","        mu <- function(theta) numeric(0)
+"
+"1","        log.norm.const <- function(theta) numeric(0)
+"
+"1","        quit <- function(theta) invisible()
+"
+"1","        val <- do.call(match.arg(cmd), args = list(theta))
+"
+"1","        return(val)
+"
+"1","    }
+"
+"1","    barrier.triangles <- unique(barrier.triangles)
+"
+"1","    obj <- list()
+"
+"1","    obj$prior.sigma <- prior.sigma
+"
+"1","    obj$prior.range <- prior.range
+"
+"1","    obj$range.fraction <- range.fraction
+"
+"1","    obj$inla.barrier.q <- inla.barrier.q
+"
+"1","    obj$fem <- inla.barrier.fem(mesh, barrier.triangles = barrier.triangles)
+"
+"1","    barrier.model <- inla.rgeneric.define(model = barrier.rgeneric.model, 
+"
+"1","        optimize = TRUE, obj = obj)
+"
+"1","    if (!is.na(prior.sigma[2]) && !is.na(prior.range[2])) {
+"
+"1","    }
+"
+"1","    else {
+"
+"1","        warning(""Not properly tested, let us know if you have problems."")
+"
+"1","    }
+"
+"1","    return(barrier.model)
+"
+"1","}
+"
+"1","<bytecode: 0x1449d8400>
+"
+"1","<environment: namespace:INLA>
+"

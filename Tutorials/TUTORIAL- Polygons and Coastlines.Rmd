@@ -1,0 +1,120 @@
+# TUTORIAL: Polygons and Coastlines
+https://haakonbakkagit.github.io/btopic127.html
+
+```{r}
+library(INLA)
+library(rgdal)
+library(rgeos)
+library(ggmap)
+set.seed(2018)
+```
+
+```{r}
+# First polygon
+pl1 <- Polygon(cbind(c(0,15,15,0,0), c(5,0,20,20,5)), hole=FALSE)
+# Hole in the first polygon
+h1 <- Polygon(cbind(c(5,12,10,5,5), c(7,7,15,15,7)), hole=TRUE)
+# Second polygon
+pl2 <- Polygon(cbind(c(15,20,20,30,30,15,15), c(10,10,0,0,20,20,10)), hole=FALSE)
+
+sp <- SpatialPolygons(list(Polygons(list(pl1, h1), '0'), Polygons(list(pl2), '1')))
+
+SpatialPolygons(list(Polygons(list(pl2), '1')))
+
+plot(sp, main = 'Polygon')
+?dplyr::select
+
+plot(cbind(c(5,12,10,5,5), c(7,7,15,15,7)))
+
+```
+
+In R, the "@" symbol is used to access slots or components of an object that has a class defined with the S4 class system. This is often used with objects from spatial data packages like sp and sf. The "@" symbol is used to access internal components of an object, which are typically stored in slots.
+
+
+```{r}
+# You can run this code chunk
+pl1 <- Polygon(cbind(c(22.80, 22.80, 26.85, 26.85, 22.80), 
+                     c(38.06, 34.88, 34.88, 38.06, 38.06)), hole=FALSE)
+
+sp <- SpatialPolygons(list(Polygons(list(pl1), '0')), 
+                      proj4string =CRS("+proj=longlat +datum=WGS84"))
+plot(sp)
+```
+
+
+```{r}
+# create a polygon representing the area of interest
+pll = Polygon(sp@polygons[[1]]@Polygons[[1]]@coords, hole = F)
+sp@polygons[[1]]@Polygons
+length(sp@polygons[[1]]@Polygons)
+class(pll)
+length(sp@polygons[[1]]@Polygons)
+
+# https://github.com/haakonbakkagit/haakonbakkagit.github.io/tree/master/data/btopic127
+shape5 <- rgdal::readOGR(dsn = "data/", layer = "shape5")
+
+# number of polygons representing the islands
+n_poly = length(shape5@polygons[[1]]@Polygons)
+idx = seq(1:n_poly)
+
+# create a list of holes
+hole_list = lapply(idx, function(n) Polygon(shape5@polygons[[1]]@Polygons[[n]]@coords, hole = T)) 
+
+# create the final Spatial Polygons
+new_sp = SpatialPolygons(list(Polygons(append(hole_list, pll),'1')))
+# take a look
+plot(new_sp)
+mesh_poly = inla.mesh.2d(boundary = new_sp, max.edge = 0.2)
+plot(mesh_poly, main = '')
+
+# same without perimeter
+# create the final Spatial Polygons
+new_sp = SpatialPolygons(list(Polygons(hole_list,'1')))
+# take a look
+plot(new_sp)
+mesh_poly = inla.mesh.2d(boundary = new_sp, max.edge = 0.2)
+plot(mesh_poly, main = '')
+str(new_sp)
+```
+
+
+```{r}
+?as
+```
+
+
+
+
+
+Paula has a tutorial:
+TUTORIAL: terra pckge Paula https://www.paulamoraga.com/tutorial-terra/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

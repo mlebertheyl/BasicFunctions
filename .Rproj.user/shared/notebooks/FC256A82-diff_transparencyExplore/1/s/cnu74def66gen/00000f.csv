@@ -1,0 +1,15 @@
+"0","## --------------------------------------------------------------------------------
+res.barrier.p2 = inla(formula2, data=inla.stack.data(stk),
+       control.predictor=list(A = inla.stack.A(stk)),
+       family = 'gaussian',
+       control.family = list(hyper = list(prec = list(
+             prior = ""pc.prec"", fixed = FALSE, 
+             param = c(0.2,0.5))))) #,
+"
+"2","Loading required package: Matrix
+"
+"2","Loading required package: sp
+"
+"2","This is INLA_23.06.29 built 2023-06-30 04:44:50 UTC.
+ - See www.r-inla.org/contact-us for how to get help.
+"

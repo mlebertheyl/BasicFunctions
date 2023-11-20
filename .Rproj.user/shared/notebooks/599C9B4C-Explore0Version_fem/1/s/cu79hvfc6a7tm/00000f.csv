@@ -1,0 +1,3 @@
+"0","inla.setOption("
+"0","    pardiso.license = ""~/.pardiso.lic"" "
+"0",")"

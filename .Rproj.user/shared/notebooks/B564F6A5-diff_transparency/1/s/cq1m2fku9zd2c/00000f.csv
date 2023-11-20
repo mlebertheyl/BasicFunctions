@@ -1,0 +1,8 @@
+"0","## --------------------------------------------------------------------------------"
+"0","stk <- inla.stack(data=list(y=df$y), A=list(A.data, 1),"
+"0","                  effects=list(s=1:mesh$n, "
+"0","                               intercept=rep(1, nrow(df))), "
+"0","                  remove.unused = FALSE, tag='est')"
+"0","# - this is the common stack used in INLA SPDE models"
+"0","# - see the SPDE-tutorial"
+"0","# - - http://www.r-inla.org/examples/tutorials/spde-tutorial"

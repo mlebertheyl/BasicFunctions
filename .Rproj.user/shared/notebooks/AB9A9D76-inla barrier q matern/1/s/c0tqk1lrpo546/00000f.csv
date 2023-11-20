@@ -1,0 +1,250 @@
+"0","inla.barrier.fem
+"
+"1","function (mesh, barrier.triangles, Omega = NULL) 
+"
+"1","{
+"
+"1","    stopifnot(inherits(mesh, ""inla.mesh""))
+"
+"1","    if (missing(barrier.triangles) && is.null(Omega)) 
+"
+"1","        stop(""Input barrier triangles"")
+"
+"1","    if (missing(barrier.triangles)) {
+"
+"1","    }
+"
+"1","    else {
+"
+"1","        barrier.triangles <- unique(barrier.triangles)
+"
+"1","        t <- length(mesh$graph$tv[, 1])
+"
+"1","        remaining <- setdiff(1:t, barrier.triangles)
+"
+"1","        if (!is.null(Omega)) 
+"
+"1","            warning(""Omega is replaced by barrier.triangles"")
+"
+"1","        Omega <- list(remaining, barrier.triangles)
+"
+"1","    }
+"
+"1","    dt.fem.white <- function(mesh, subdomain) {
+"
+"1","        Ck <- rep(0, mesh$n)
+"
+"1","        for (t in subdomain) {
+"
+"1","            px <- mesh$graph$tv[t, ]
+"
+"1","            temp <- mesh$loc[px, ]
+"
+"1","            p1 <- t(t(temp[1, c(1, 2)]))
+"
+"1","            p2 <- t(t(temp[2, c(1, 2)]))
+"
+"1","            p3 <- t(t(temp[3, c(1, 2)]))
+"
+"1","            Ts <- cbind(p2 - p1, p3 - p1)
+"
+"1","            area <- abs(det(Ts)) * 0.5
+"
+"1","            for (i in 1:3) {
+"
+"1","                Ck[px[i]] <- Ck[px[i]] + area
+"
+"1","            }
+"
+"1","        }
+"
+"1","        return(Ck)
+"
+"1","    }
+"
+"1","    dt.fem.identity <- function(mesh) {
+"
+"1","        len <- length(mesh$graph$tv[, 1])
+"
+"1","        index.i <- rep(0, len * 6)
+"
+"1","        index.j <- rep(0, len * 6)
+"
+"1","        Aij <- rep(0, len * 6)
+"
+"1","        counter <- 1
+"
+"1","        for (t in 1:len) {
+"
+"1","            px <- mesh$graph$tv[t, ]
+"
+"1","            temp <- mesh$loc[px, ]
+"
+"1","            p1 <- t(t(temp[1, c(1, 2)]))
+"
+"1","            p2 <- t(t(temp[2, c(1, 2)]))
+"
+"1","            p3 <- t(t(temp[3, c(1, 2)]))
+"
+"1","            Ts <- cbind(p2 - p1, p3 - p1)
+"
+"1","            twiceArea <- abs(det(Ts))
+"
+"1","            for (i in 1:3) {
+"
+"1","                index.i[counter] <- px[i]
+"
+"1","                index.j[counter] <- px[i]
+"
+"1","                Aij[counter] <- (twiceArea) * 1/12
+"
+"1","                counter <- counter + 1
+"
+"1","            }
+"
+"1","            for (i in 1:2) {
+"
+"1","                for (j in (i + 1):3) {
+"
+"1","                  index.i[counter] <- px[i]
+"
+"1","                  index.j[counter] <- px[j]
+"
+"1","                  Aij[counter] <- (twiceArea) * 1/24
+"
+"1","                  counter <- counter + 1
+"
+"1","                  index.i[counter] <- px[j]
+"
+"1","                  index.j[counter] <- px[i]
+"
+"1","                  Aij[counter] <- (twiceArea) * 1/24
+"
+"1","                  counter <- counter + 1
+"
+"1","                }
+"
+"1","            }
+"
+"1","        }
+"
+"1","        I <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+"
+"1","            dims = c(mesh$n, mesh$n), repr = ""T"")
+"
+"1","        return(I)
+"
+"1","    }
+"
+"1","    dt.fem.laplace <- function(mesh, subdomain) {
+"
+"1","        Nphix <- rbind(c(-1, -1), c(1, 0), c(0, 1))
+"
+"1","        len <- length(subdomain)
+"
+"1","        index.i <- rep(0, len * 9)
+"
+"1","        index.j <- rep(0, len * 9)
+"
+"1","        Aij <- rep(0, len * 9)
+"
+"1","        counter <- 1
+"
+"1","        for (tri in subdomain) {
+"
+"1","            px <- mesh$graph$tv[tri, ]
+"
+"1","            temp <- mesh$loc[px, ]
+"
+"1","            p1 <- t(t(temp[1, c(1, 2)]))
+"
+"1","            p2 <- t(t(temp[2, c(1, 2)]))
+"
+"1","            p3 <- t(t(temp[3, c(1, 2)]))
+"
+"1","            Ts <- cbind(p2 - p1, p3 - p1)
+"
+"1","            TTTinv <- solve(t(Ts) %*% Ts)
+"
+"1","            area <- abs(det(Ts)) * 0.5
+"
+"1","            for (k in 1:3) {
+"
+"1","                for (m in 1:3) {
+"
+"1","                  tmp <- (3 * m + k - 4) * length(subdomain)
+"
+"1","                  index.i[(tmp + counter)] <- px[k]
+"
+"1","                  index.j[(tmp + counter)] <- px[m]
+"
+"1","                  Aij[(tmp + counter)] <- area * Nphix[k, c(1, 
+"
+"1","                    2)] %*% TTTinv %*% as.matrix(Nphix[m, c(1, 
+"
+"1","                    2)])
+"
+"1","                }
+"
+"1","            }
+"
+"1","            counter <- counter + 1
+"
+"1","        }
+"
+"1","        Dk <- sparseMatrix(i = index.i, j = index.j, x = Aij, 
+"
+"1","            dims = c(mesh$n, mesh$n), repr = ""T"")
+"
+"1","        return(Dk)
+"
+"1","    }
+"
+"1","    xi <- length(Omega)
+"
+"1","    if (requireNamespace(""INLAspacetime"")) {
+"
+"1","        warning(""Using implementation from the `INLAspacetime` package"")
+"
+"1","        fem <- INLAspacetime::mesh2fem.barrier(mesh = mesh, barrier.triangles = Omega[[2L]])
+"
+"1","    }
+"
+"1","    else {
+"
+"1","        warning(paste(""Please install the `INLAspacetime` package\n"", 
+"
+"1","            ""which contains an implementation that runs faster!""))
+"
+"1","        fem <- list()
+"
+"1","        fem$I <- dt.fem.identity(mesh)
+"
+"1","        fem$D <- list()
+"
+"1","        fem$C <- list()
+"
+"1","        for (k in 1:xi) {
+"
+"1","            fem$D[[k]] <- dt.fem.laplace(mesh, Omega[[k]])
+"
+"1","        }
+"
+"1","        for (k in 1:xi) {
+"
+"1","            fem$C[[k]] <- dt.fem.white(mesh, Omega[[k]])
+"
+"1","        }
+"
+"1","        fem$hdim <- xi
+"
+"1","    }
+"
+"1","    return(fem)
+"
+"1","}
+"
+"1","<bytecode: 0x140504308>
+"
+"1","<environment: namespace:INLA>
+"

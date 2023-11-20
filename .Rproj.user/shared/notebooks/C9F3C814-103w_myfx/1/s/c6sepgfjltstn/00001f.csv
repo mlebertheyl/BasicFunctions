@@ -1,0 +1,8 @@
+"0",""
+"0","# BARRIER 2"
+"0","bar2 = over(poly2, SpatialPoints(posTri), returnList=T)"
+"0","# - checking which mesh triangles are inside the barrier area"
+"0","bar2 = unlist(bar2)"
+"0","poly.bar2 = inla.barrier.polygon(mesh, barrier.triangles = bar2)"
+"0",""
+"0","plot(mesh, main=""Mesh and Omega"")"
