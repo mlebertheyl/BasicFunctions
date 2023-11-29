@@ -1,8 +1,14 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
 # Barrier Model, 2 barriers example {#bm_2barriers}
+
 ## Simulation and inference with the Barrier model
 
-
-```{r inla.barrier.fem.plus013, include=FALSE}
+```{r dt2 chunk1 inla.barrier.fem.plus013, include=FALSE}
 inla.barrier.fem.plus <- function (mesh, barrier.triangles) 
   {
   n <- length(barrier.triangles) #barrier triangles list
@@ -290,7 +296,7 @@ local.plot.field_ = function(field, mesh,
         ylim = xlim
   }
   if (missing(pal)) {
-    pal = viridis::plasma(17)
+    pal = viridis::plasma(17) #17 before
   }
   
   proj = inla.mesh.projector(mesh, xlim = xlim, 
@@ -554,22 +560,23 @@ book.color.d = function(n=4) {
 
 ```
 
-
-```{r setup, warning=FALSE, message=FALSE}
+```{r dt2 chunk2 setup, warning=FALSE, message=FALSE}
 library(INLA)
 library(fields)
 library(rgdal)
 library(viridisLite)
+library(scales)
+library(ggplot2)
+library(sf); library(terra); library(sp)
 
-set.seed(3)
-set.inla.seed <- 3
+set.seed(2303) #8 befor
+set.inla.seed <- 2303
 ```
 
-
-```{r}
-smalldist = 0.2
+```{r dt2 chunk3}
+smalldist = 0.5
 # - the width of the opening in the barrier
-width = 0.5
+width = 0.4
 # - The width/thickness of the barrier
 
 local.square.polygon = function(xlim, ylim){
@@ -590,64 +597,11 @@ poly.original = SpatialPolygons(c(poly1@polygons, poly2@polygons))
 plot(poly.original, main="Barrier area polygon")
 ```
 
-
-```{r 3, include=FALSE}
-# - the width of the opening in the barrier is the same as before.
-# - The width/thickness of the barrier: 
-width_0.1 = 0.1
-width_0.2 = 0.2
-width_0.5 = 0.5
-width_0.7 = 0.7
-width_0.9 = 0.9
-width_1.0 = 1
-width_0.3 = 0.3
-width_2.0 = 2
-width_3.0 = 3
-```
-
-```{r 4}
-par(mfrow=c(2,2))
-poly1 = local.square.polygon(xlim=c(-1, 5-smalldist/2), 
-                          ylim=5+width*c(-.5, .5))
-poly2 = local.square.polygon(xlim=c(5+smalldist/2, 11), 
-                          ylim=5+width*c(-.5, .5))
-poly.original = SpatialPolygons(c(poly1@polygons, poly2@polygons))
-
-plot(poly.original, main="Barrier area polygon", sub = "width = 0.1")
-
-width <- width_0.5
-poly1 = local.square.polygon(xlim=c(-1, 5-smalldist/2), 
-                          ylim=5+width*c(-.5, .5))
-poly2 = local.square.polygon(xlim=c(5+smalldist/2, 11), 
-                          ylim=5+width*c(-.5, .5))
-poly.original = SpatialPolygons(c(poly1@polygons, poly2@polygons))
-
-plot(poly.original, main="Barrier area polygon", sub = "width = 0.5")
-
-width <- width_1.0
-poly1 = local.square.polygon(xlim=c(-1, 5-smalldist/2), 
-                          ylim=5+width*c(-.5, .5))
-poly2 = local.square.polygon(xlim=c(5+smalldist/2, 11), 
-                          ylim=5+width*c(-.5, .5))
-poly.original = SpatialPolygons(c(poly1@polygons, poly2@polygons))
-
-plot(poly.original, main="Barrier area polygon", sub = "width = 1.0")
-
-width <- width_2.0
-poly1 = local.square.polygon(xlim=c(-1, 5-smalldist/2), 
-                          ylim=5+width*c(-.5, .5))
-poly2 = local.square.polygon(xlim=c(5+smalldist/2, 11), 
-                          ylim=5+width*c(-.5, .5))
-poly.original = SpatialPolygons(c(poly1@polygons, poly2@polygons))
-
-plot(poly.original, main="Barrier area polygon", sub = "width = 2.0")
-```
-
-Hold that thought...
+############ 
 
 Let´s do with different transparencies first.
 
-```{r 5}
+```{r dt2 chunk4 5}
 ## --------------------------------------------------------------------------------
 max.edge.length = 0.4
 # - The coarseness of the finite element approximation
@@ -671,8 +625,7 @@ mesh <- mesh_
 # - The INLA mesh constructor, used for any INLA-SPDE model
 ```
 
-
-```{r 7}
+```{r dt2 chunk5 7}
 ## --------------------------------------------------------------------------------
 tl = length(mesh$graph$tv[,1])
 # - the number of triangles in the mesh
@@ -685,8 +638,7 @@ posTri = SpatialPoints(posTri)
 # - the positions of the triangle centres
 ```
 
-
-```{r 8}
+```{r dt2 chunk6 8}
 # BARRIER ORIGINAL
 bar.original = over(poly.original, SpatialPoints(posTri), returnList=T)
 # - checking which mesh triangles are inside the barrier area
@@ -694,12 +646,6 @@ bar.original = unlist(bar.original)
 poly.bar.orginal = inla.barrier.polygon(mesh, barrier.triangles = bar.original)
 # - the Barrier model's polygon
 # - in most cases this should be the same as poly.original
-
-## --------------------------------------------------------------------------------
-plot(mesh, main="Mesh and Omega")
-plot(poly.bar.orginal, add=T, col='lightblue')
-plot(mesh, add=T)
-points(loc1)
 
 # BARRIER 1
 bar1 = over(poly1, SpatialPoints(posTri), returnList=T)
@@ -709,28 +655,40 @@ poly.bar1 = inla.barrier.polygon(mesh, barrier.triangles = bar1)
 # - the Barrier model's polygon
 # - in most cases this should be the same as poly.original
 
-
-## --------------------------------------------------------------------------------
-plot(mesh, main="Mesh and Omega")
-plot(poly.bar1, add=T, col='lightblue')
-plot(mesh, add=T)
-points(loc1)
-
 # BARRIER 2
 bar2 = over(poly2, SpatialPoints(posTri), returnList=T)
 # - checking which mesh triangles are inside the barrier area
 bar2 = unlist(bar2)
 poly.bar2 = inla.barrier.polygon(mesh, barrier.triangles = bar2)
 
-plot(mesh, main="Mesh and Omega")
-plot(poly.bar2, add=T, col='lightblue')
-plot(mesh, add=T)
-points(loc1)
+# PLOTS
+crs_longlat <- CRS("+proj=longlat +datum=WGS84")
+crs_km <- CRS("+proj=utm +zone=39 ellps=WGS84 +units=km")
+mesh_$crs <- crs_km
+
+poly.bar.orginal_ <- st_as_sf(poly.bar.orginal) 
+st_crs(poly.bar.orginal_) <- crs_km
+
+poly.bar1_ <- st_as_sf(poly.bar1) 
+st_crs(poly.bar1_) <- crs_km
+
+poly.bar2_ <- st_as_sf(poly.bar2) 
+st_crs(poly.bar2_) <- crs_km
+
+gg_mesh2b <- ggplot() +
+  inlabru::gg(mesh_, crs = crs_km) +
+  geom_sf(data = poly.bar.orginal_, col = 'red') 
+
+gg_meshlb <- ggplot() +
+  inlabru::gg(mesh_, crs = crs_km) +
+  geom_sf(data = poly.bar1_, col = 'red') 
+
+gg_meshrb <- ggplot() +
+  inlabru::gg(mesh_, crs = crs_km) +
+  geom_sf(data = poly.bar2_, col = 'red') 
 ```
 
-ggplot nice figure in "0Version_Adaptive barrier models.Rdm"
-
-```{r 9}
+```{r dt2 chunk7 9}
 ## --------------------------------------------------------------------------------
 local.plot.field = function(field, ...){
   xlim = c(2, 8); ylim = xlim;
@@ -741,17 +699,16 @@ local.plot.field = function(field, ...){
   field.proj = inla.mesh.project(proj, field)
   # - Do the projection
   image.plot(list(x = proj$x, y=proj$y, z = field.proj), 
-             xlim = xlim, ylim = ylim, col = plasma(17), ...)  
+             xlim = xlim, ylim = ylim, col = plasma(17), ...)  # change for next code
   # - Use image.plot to get nice colors and legend
 }
 print(mesh$n)
 # - This is the appropriate length of the field variable
 ```
 
-
 ADD range.fraction ACCORDINGLY
 
-```{r 12 proof for latter fem.plus function}
+```{r dt2 chunk8 12 proof for latter fem.plus function}
 # this is to test the inla.barrier.fem function.
 r1 <- 1; r2 <- 0.5; r3 <- 0.5
 ranges.3 <- c(r1, r2, r3)
@@ -763,8 +720,9 @@ A1 <- mat.original$I - 1/8*(r1^2*mat.original$D[[1]] + r2^2*mat.original$D[[2]])
 sum(A - A1)
 ```
 
-
-```{r 11_, warning=FALSE, message=FALSE}
+```{r dt2 chunk9 11_, warning=FALSE, message=FALSE}
+# Remeber that we don't modify range directly but r/something.
+# passing a list with barrier 1 and barrier 2 using pcmatern.plus. Here we're using the same range (range.fraction) for both
 pcmatern.p3 <-  
   inla.barrier.pcmatern.plus(mesh,
                              fem = mat.plus,
@@ -774,6 +732,8 @@ pcmatern.p3 <-
                              range.fraction = c(0.1, 0.1))
 barrier.model.p3 <- pcmatern.p3
 
+# passing only 1 barrier using pcmatern.plus. 
+# this is for comparison with inla pcmatern function
 pcmatern.p2 <-  
   inla.barrier.pcmatern.plus(mesh,
                              fem = mat.original,
@@ -783,6 +743,7 @@ pcmatern.p2 <-
                              range.fraction = 0.1)
 barrier.model.p2 <- pcmatern.p2
 
+# same as pcmatern.p2 for comparison of functions inla.barrier.pcmatern and .plus
 pcmatern.o <-  
   inla.barrier.pcmatern(mesh,
                              barrier.triangles = bar.original,
@@ -792,42 +753,69 @@ pcmatern.o <-
 barrier.model.o <- pcmatern.o
 ```
 
+```{r dt2 chunk10}
+# Now let's try with different range fractions in the same model
+pcmatern.p3.2b <-  
+  inla.barrier.pcmatern.plus(mesh,
+                             fem = mat.plus,
+                             barrier.triangles = list(bar1, bar2),
+                             prior.range = c(1.44, 0.5), 
+                             prior.sigma = c(0.7, 0.5),
+                             range.fraction = c(0.5, 0.1))
+barrier.model.p3.2b <- pcmatern.p3.2b
+```
 
-```{r, warning=FALSE, message=FALSE}
-## --------------------------------------------------------------------------------
-barrier.model <- barrier.model.o 
-range <- 3
+#### we're alright until here
+
+BARRIER MODEL ORIGINAL
+
+```{r dt2 chunk11}
+range <- 20
 # - the spatial range parameter
-Q <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
+barrier.model <- barrier.model.o 
+Q.barrier <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
 # - the precision matrix for fixed ranges
 # - Q is a function of the hyperparameters theta = c( log(sigma), log(range1), log(range2),...)
-
-## --------------------------------------------------------------------------------
-u <- inla.qsample(n=1, Q=Q, seed = set.inla.seed)
+u <- inla.qsample(n=1, Q=Q.barrier, seed = set.inla.seed)
 u <- u[ ,1]
+u.p1 <- u
 # - access the first sample
 ```
 
+SAME PLOTS JUST DECIDE WHICH ONE IS BETTER
 
-```{r}
-pal <- wes_palette(21, name = "Zissou1", type = "continuous")
-par(mfrow = c(2, 2))
-
-### 1,2 plots
+```{r dt2 chunk12}
+par(mfrow= c(2,2))
 local.plot.field(u, main="The true (simulated) spatial field",
-                 sub = "local.plot.field()")
-local.plot.field_(field = u, mesh = mesh, pal = pal, 
-                  sub = "local.plot.field_(..., pal = wes_palette)")
+                 sub = "barrier.model.o, range.fraction = 0.1")
+proj <- inla.mesh.projector(mesh, xlim = c(2, 8), ylim = c(2, 8), dims = c(300, 300)) 
+book.plot.field(u, projector = proj)
 
-### 1,2 plots
-local.plot.field(u, main="Overlay the barrier with plot(..., add=T)", 
-                 sub="plot(poly.bar.orginal, add=T, col='grey')")
+local.plot.field(u, main="The true (simulated) spatial field",
+                 sub = "barrier.model.o, range.fraction = 0.1")
 plot(poly.bar.orginal, add=T, col='grey')
 # - Overlay the barrier with add=T
-local.plot.field(u, sub="plot(poly.bar.orginal, add=T)")
+local.plot.field(u, main="The true (simulated) spatial field",
+                 sub = "barrier.model.o, range.fraction = 0.1")
 plot(poly.bar.orginal, add=T)
+```
+EXACT SAME AS BEFORE we change the object range and seed to chose the best one
 
-### 1,2 plots
+```{r dt2 chunk11}
+local.plot.field(inla.qsample(n=1, 
+                              Q=inla.rgeneric.q(barrier.model,"Q", theta = c(0, log(3))),
+                              seed = 2303)[ ,1])
+proj <- inla.mesh.projector(mesh, xlim = c(2, 8), ylim = c(2, 8), dims = c(300, 300)) 
+book.plot.field(u, projector = proj)
+
+```
+
+
+
+CODE FOR PLOTS WITH DIFFERENT RANGES This are again the exact same plots but with different gray rectangles overlay.
+
+```{r dt2 chunk13}
+par(mfrow = c(2,2))
 local.plot.field(u, main= "Overlay left/right barrier", 
                    sub = "plot(poly.bar1, add=T, col='grey')")
 plot(poly.bar1, add=T, col='grey')
@@ -845,70 +833,458 @@ plot(poly.bar2, add=T, col=alpha('grey', 0.3))
 local.plot.field(u, sub = "plot(add=T); plot(add=T, col=alpha('grey', 0.1))")
 plot(poly.bar1, add=T, col='grey')
 plot(poly.bar2, add=T, col=alpha('grey', 0.1))
+```
+
+Now the trues spatial field with different ranges.
+
+BARRIER MODEL WITH MY FUNCTIONS, all plots should be exactly the same
+
+```{r dt2 chunk14}
+range <- 20
+# - the spatial range parameter
+barrier.model <- barrier.model.p2
+Q.barrier <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
+# - the precision matrix for fixed ranges
+# - Q is a function of the hyperparameters theta = c( log(sigma), log(range1), log(range2),...)
+u <- inla.qsample(n=1, Q=Q.barrier, seed = set.inla.seed)
+u.p2 <- u[ ,1]
+# - access the first sample
+```
+
+```{r dt2 chunk15}
+range <- 20
+# - the spatial range parameter
+barrier.model <- barrier.model.p3
+Q.barrier <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
+# - the precision matrix for fixed ranges
+# - Q is a function of the hyperparameters theta = c( log(sigma), log(range1), log(range2),...)
+u <- inla.qsample(n=1, Q=Q.barrier, seed = set.inla.seed)
+u.p3 <- u[ ,1]
+# - access the first sample
+```
+
+```{r dt2 chunk16}
+par(mfrow = c(2,2))
+local.plot.field(u.p1, main="The true (simulated) spatial field",
+                 sub = "barrier.model.o, range.fraction = 0.1")
+local.plot.field(u.p2, main="The true (simulated) spatial field",
+                 sub = "barrier.model.p2, range.fraction = 0.1")
+local.plot.field(u.p3, main="The true (simulated) spatial field",
+                 sub = "barrier.model.p3, range.fraction = (0.1, 0.1)")
+```
+
+PERFECT!
+
+```{r dt2 chunk17}
+range <- 20
+# - the spatial range parameter
+barrier.model <- barrier.model.p3.2b
+Q.barrier <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
+# - the precision matrix for fixed ranges
+# - Q is a function of the hyperparameters theta = c( log(sigma), log(range1), log(range2),...)
+u <- inla.qsample(n=1, Q=Q.barrier, seed = set.inla.seed)
+u.p3.2b <- u[ ,1]
+```
+
+```{r dt2 chunk18}
+par(mfrow = c(1,2))
+local.plot.field(u.p3.2b, main="The true spatial field",
+                 sub = "barrier.model.p3.2b, range.fraction = c(0.5, 0.1)")
+# - access the first sample
+local.plot.field(u.p1, main="The true spatial field",
+                 sub = "barrier.model.o, range.fraction = 0.1")
+```
+
+PERFECT!
+
+Now let's do a lot of plots, same width different range fractions
+
+```{r dt2 chunk19}
+mydiff.r <- function(mesh, fem, barrier.triangles, 
+                     prior.range = c(1.44, 0.5), prior.sigma = c(0.7, 0.5),
+                     range.fraction,
+                     range = 20,
+                     set.inla.seed = set.inla.seed,
+                     return.list = FALSE) {
+  
+  barrier.model <- inla.barrier.pcmatern.plus(mesh, fem, barrier.triangles, 
+                                              prior.range, prior.sigma, 
+                                              range.fraction)
+  # range fraction has to have the same length has barrier triangles
+  Q <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
+  u <- suppressWarnings(inla.qsample(n=1, Q=Q, seed = set.inla.seed))
+  u <- u[ ,1]
+  local.plot.field(u, main="True spatial field",
+                   sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"))
+  if (return.list == TRUE) {
+    return(list(barrier.model = barrier.model, Q = Q, sample = u))
+  }
+}
+```
+
+.gif in plots.r (diff_r20.gif) shows results
+
+```{r dt2 chunk20}
+## view animated image
+img_animated
+```
+
+######## 
 
 
+btopic 103, simulate the spatial locations and the data
+
+I'm here
+
+```{r dt2 chunk21}
+local.square.polygon_T = function(xlim, ylim){
+# - output is a square
+  xlim = range(xlim); ylim = range(ylim)
+  corner1 = c(xlim[1], ylim[2])
+  corner2 = c(xlim[2], ylim[1])
+  poly = Polygon(rbind(corner1, c(corner1[1], corner2[2]), corner2, c(corner2[1], corner1[2]), corner1), hole = TRUE)
+  return(poly)
+}
+
+# change xlim, and make it a hole
+poly1_h <- local.square.polygon_T(xlim=c(2, 5-smalldist/2), 
+                          ylim=5+width*c(-.5, .5))
+#poly1; poly1_h@coords
+poly2_h <- local.square.polygon_T(xlim=c(5+smalldist/2, 8), 
+                          ylim=5+width*c(-.5, .5))
+#poly2; poly2_h@coords
+
+loc1 <- matrix(c(2,2, 8,2, 8,8, 2,8), 4, 2, byrow = T)
+# plot(loc1)
+locp <- Polygon(loc1, hole = FALSE)
+# plot(SpatialPolygons(list(Polygons(list(locp), '1'))))
+
+poly.water <- SpatialPolygons(list(Polygons(list(locp, poly1_h, poly2_h), '0')))
+# plot(poly.water)
+poly.water_sf <- st_as_sf(poly.water)
+
+set.seed(set.inla.seed)
+loc.data <- spsample(poly.water, n = 100, type = "random")
+loc.data_sf <- st_as_sf(loc.data)
+loc.data <- loc.data@coords
 ```
 
 
 ```{r}
-## --------------------------------------------------------------------------------
-num.try = 500 
-# - try to sample this number of data locations
-loc.try = matrix(runif(num.try*2, min=2, max=8), 
-                         num.try, 2)
-# - locations sampled inside the barrier will be removed 
-#   in a few lines
-temp = SpatialPoints(loc.try)
-loc.ok = is.na(over(temp, poly.bar.orginal))
-# - only allow locations that are not inside the Barrier area
-loc.data = loc.try[loc.ok, ]
-A.data = inla.spde.make.A(mesh, loc.data)
+mesh_h <-inla.mesh.2d(boundary = poly.water_sf, 
+             max.e = max.edge.length, offset=1)
+
+mesh_hb <-inla.mesh.2d(boundary = poly.water_sf, 
+             max.edge = c(0.1, 0.4), 
+             cutoff = c(0.02),
+             offset=1)
+# plot(st_geometry(poly.water_sf))
+ggplot(data = poly.water_sf) + 
+  inlabru::gg(mesh_h) + #plot mesh_hb alternatively
+  geom_sf(data = loc.data_sf,
+          col='purple',size=1.7,alpha=0.5)  
+```
+
+```{r dt2 chunk22}
+# THIS IS THE SAME FOR ALL
+A.data <- inla.spde.make.A(mesh, loc.data)
 # - the projector matrix required for any spatial model
 # - this matrix can transform the field-defined-on-the-mesh 
 #   to the field-defined-on-the-data-locations
 c(dim(A.data), mesh$n, nrow(loc.data))
+# [1]  100 2570 2570  100
 # - shows that the dimensions are correct
-u.data = A.data %*% u
-# - project the field from the finite element  
-#   representation to the data locations
 ```
 
 
-```{r}
-## --------------------------------------------------------------------------------
-df = data.frame(loc.data)
-# - df is the dataframe used for modeling
-names(df) = c('locx', 'locy')
-sigma.u = 1
-# - size of the random effect
-# - feel free to change this value
-sigma.epsilon = 0.2
-# - size of the iid noise in the Gaussian likelihood
-# - feel free to change this value
-df$y = drop(sigma.u*u.data + sigma.epsilon*rnorm(nrow(df)))
-# - sample observations with gaussian noise
+Until here the simulation is equal for all barriers. I'm excluding barriers for all.
+
+Let's start the sample with 2 barriers with equal range, i.e. Q from barrier.model.o
+Most of the code is general as the locations are the same. 
+u is different.
 
 
-## --------------------------------------------------------------------------------
+```{r dt2 chunk23}
+# THIS CHANGES 
+# we only redefine u for barrier.model.o 'cause we lost it
+Q.barrier.o <- inla.rgeneric.q(barrier.model.o, "Q", theta = c(0, log(range)))
+u <- inla.qsample(n = 1, Q = Q.barrier.o, seed = set.inla.seed)[, 1]
+
+u.data <- A.data %*% u
+# - project the field from the finite element  
+#   representation to the data locations
+
+# THIS IS THE SAME
+# df is the dataframe used for modeling
+df <- data.frame(loc.data)
+names(df) <- c('locx', 'locy')
+# Size of the spatial signal
+sigma.u <- 1
+# Size of the measurement noise
+sigma.epsilon <- 0.2
+
+# DIFFERENT 'CAUSE IT HAS u.data
+df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
 summary(df)
 ```
 
 
-```{r}
-## --------------------------------------------------------------------------------
-stk <- inla.stack(data=list(y=df$y), A=list(A.data, 1),
+```{r dt2 chunk24}
+#stk for simulated data with barriers
+stk <- inla.stack(data=list(y=df$y), 
+                  A=list(A.data, 1),
                   effects=list(s=1:mesh$n, 
                                intercept=rep(1, nrow(df))), 
-                  remove.unused = FALSE, tag='est')
-# - this is the common stack used in INLA SPDE models
-# - see the SPDE-tutorial
-# - - http://www.r-inla.org/examples/tutorials/spde-tutorial
+                  remove.unused = FALSE, 
+                  tag='est')
+# in case I want to go back to this stk without running everything again:
+stk.sim.bm <- stk
+stk <- stk.sim.bm
+```
+
+```{r dt2 chunk25}
+formula.bm <- y ~ 0 + intercept + f(s, model = barrier.model.o)
+# - The spatial model component is different from stationary
+# - The rest of the model setup is the same as in the stationary case!
+# - - e.g. the inla(...) call below is the same, 
+#     only this formula is different
+
+res.barrier.o <- inla(formula.bm, data = inla.stack.data(stk),
+       control.predictor = list(A = inla.stack.A(stk)),
+       family = 'gaussian',
+       control.family = list(hyper = list(
+         prec = list(prior = "pc.prec", fixed = FALSE, param = c(0.2,0.5)))),
+       control.mode=list(restart=T, theta=c(3.2, 0.4, 1.6)))
+summary(res.barrier.o)
+```
+
+```{r dt2 chunk26}
+par(mfrow= c(2,2))
+# local.plot.field
+local.plot.field(res.barrier.o$summary.random$s$mean, 
+                 main="Spatial posterior for Barrier model",
+                 sub = "barrier.model.o, range.fraction = 0.1")
+
+# same but with book.plot.spatial
+proj <- inla.mesh.projector(mesh, xlim = c(2, 8), ylim = c(2, 8), dims = c(300, 300)) 
+book.plot.field(res.barrier.o$summary.random$s$mean, projector = proj)
+
+# local.plot.field with gray barriers
+local.plot.field(res.barrier.o$summary.random$s$mean, 
+                 main="Spatial posterior for Barrier model",
+                 sub = "barrier.model.o, range.fraction = 0.1")
+plot(poly.bar.orginal, add=T, col='grey')
+
+# plocal.plot.field with barrier contour
+local.plot.field(res.barrier.o$summary.random$s$mean, 
+                 main="Spatial posterior for Barrier model",
+                 sub = "barrier.model.o, range.fraction = 0.1")
+plot(poly.bar.orginal, add=T)
+```
+
+
+############################
+Now let's do a lot of plots, same width different range fractions
+For 1
+
+```{r dt2 chunk27}
+# we saved u from p3.2b
+u.data <- A.data %*% u.p3.2b
+df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
+summary(df)
+```
+
+```{r dt2 chunk28}
+#stk for simulated data with barriers
+stk <- inla.stack(data=list(y=df$y), 
+                  A=list(A.data, 1),
+                  effects=list(s=1:mesh$n, 
+                               intercept=rep(1, nrow(df))), 
+                  remove.unused = FALSE, 
+                  tag='est')
+# in case I want to go back to this stk without running everything again:
+stk.sim.p3.2b <- stk
+stk <- stk.sim.p3.2b
+```
+
+```{r dt2 chunk29}
+formula.bm <- y ~ 0 + intercept + f(s, model = barrier.model.p3.2b)
+# - The spatial model component is different from stationary
+# - The rest of the model setup is the same as in the stationary case!
+# - - e.g. the inla(...) call below is the same, 
+#     only this formula is different
+
+res.barrier.p3.2b <- inla(formula.bm, data = inla.stack.data(stk),
+       control.predictor = list(A = inla.stack.A(stk)),
+       family = 'gaussian',
+       control.family = list(hyper = list(
+         prec = list(prior = "pc.prec", fixed = FALSE, param = c(0.2,0.5)))),
+       control.mode=list(restart=T, theta=c(3.2, 0.4, 1.6)))
+summary(res.barrier.p3.2b)
+```
+
+```{r dt2 chunk30}
+# plocal.plot.field with barrier contour
+par(mfrow = c(2,2))
+local.plot.field(res.barrier.o$summary.random$s$mean, 
+                 main="Spatial posterior for Barrier model",
+                 sub = "barrier.model.o, range.fraction = 0.1")
+plot(poly.bar.orginal, add=T)
+
+local.plot.field(res.barrier.p3.2b$summary.random$s$mean, 
+                 main="Spatial posterior for Barrier model",
+                 sub = "barrier.model.p3.2b, range.fraction = c(0.5, 0,1)")
+plot(poly.bar.orginal, add=T)
+```
+LET'S TRY TO DO A FUNCTION LIKE LAST ONE
+
+```{r dt2 chunk31}
+my_diff.pos <- function(mesh, loc.data, Q, u,
+         sigma.u = 1, sigma.epsilon = 0.2,
+         range.fraction = c(0.1, 0.1),
+         pos = res.barrier$summary.random$s$mean,
+         return.list = FALSE) {
+  
+  A.data <- inla.spde.make.A(mesh, loc.data)
+  #Q from mydiff.r function
+  u.data <- A.data %*% u
+  df <- data.frame(loc.data)
+  names(df) <- c('locx', 'locy')
+
+  df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
+  
+  stk <- inla.stack(data=list(y=df$y), 
+                    A=list(A.data, 1),
+                    effects=list(s=1:mesh$n, 
+                                 intercept=rep(1, nrow(df))), 
+                    remove.unused = FALSE, 
+                    tag='est')
+  formula <- y ~ 0 + intercept + f(s, model = barrier.model)
+  # - The spatial model component is different from stationary
+  # - The rest of the model setup is the same as in the stationary case!
+  # - - e.g. the inla(...) call below is the same, 
+  #     only this formula is different
+  
+  res.barrier <- inla(formula, data = inla.stack.data(stk),
+                        control.predictor = list(A = inla.stack.A(stk)),
+                        family = 'gaussian',
+                        control.family = list(hyper = list(
+                          prec = list(prior = "pc.prec", fixed = FALSE, param = c(0.2,0.5)))),
+                        control.mode=list(restart=T, theta=c(3.2, 0.4, 1.6)))
+  
+  local.plot.field(pos, 
+                   main="Spatial posterior for Barrier model",
+                   sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"))
+  plot(poly.bar.orginal, add=T)
+  
+  if (return.list == TRUE) {
+    return(list(pos = quote(pos), df = df, summ.df = summary(df), 
+                res = res.barrier, summ.res = summary(res.barrier)))
+  }
+}
+
+```
+
+```{r dt2 chunk32}
+data4pos <- mydiff.r(mesh, fem = mat.plus, 
+                     barrier.triangles = list(bar1, bar2),
+                     range.fraction = c(0.1, 0.1),
+                     return.list = TRUE)
+data4pos2 <- mydiff.r(mesh, fem = mat.plus, 
+                     barrier.triangles = list(bar1, bar2),
+                     range.fraction = c(0.1, 0.8),
+                     return.list = TRUE)
+
+#my_diff.pos(mesh, loc.data, data4pos[[2]], u = data4pos$sample)
+#suppressWarnings(my_diff.pos(mesh, loc.data, 
+#                             data4pos2[[2]],
+#                             data4pos2$sample, 
+#                             range.fraction = c(0.1, 0.8)))
+
+# THIS DOESN'T WORK RIGHT AWAY 'CAUSE IT NEEDS barrier.model
+# it needs barrier.model <- inla.barrier.pcmatern.plus
+
+data4pos$barrier.model
 ```
 
 
 ```{r}
-## --------------------------------------------------------------------------------
-model.stat = inla.spde2.pcmatern(mesh, prior.range = c(1, 0.5), prior.sigma = c(1, 0.5))
+# this works obviously
+Q <- data4pos
+u <- data4pos$sample
+sigma.u = 1; sigma.epsilon = 0.2; range.fraction = c(0.1, 0.1)
+     
+A.data <- inla.spde.make.A(mesh, loc.data)
+u.data <- A.data %*% u
+df <- data.frame(loc.data)
+names(df) <- c('locx', 'locy')
+
+df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
+  
+stk <- inla.stack(data=list(y=df$y), 
+                    A=list(A.data, 1),
+                    effects=list(s=1:mesh$n, 
+                                 intercept=rep(1, nrow(df))), 
+                    remove.unused = FALSE, 
+                    tag='est')
+formula <- y ~ 0 + intercept + f(s, model = barrier.model)
+
+  # - The spatial model component is different from stationary
+  # - The rest of the model setup is the same as in the stationary case!
+  # - - e.g. the inla(...) call below is the same, 
+  #     only this formula is different
+```
+
+
+```{r}
+fem = mat.plus
+barrier.triangles = list(bar1, bar2) 
+prior.range = c(1.44, 0.5)
+range.fraction = c(0.1, 0.1)
+prior.sigma = c(0.7, 0.5)
+barrier.model <- inla.barrier.pcmatern.plus(mesh, fem, barrier.triangles, 
+                                            prior.range, prior.sigma, 
+                                            range.fraction)
+```
+
+
+```{r}
+res.barrier <- inla(formula, data = inla.stack.data(stk),
+                    control.predictor = list(A = inla.stack.A(stk)),
+                    family = 'gaussian',
+                    control.family = 
+                      list(hyper = list(
+                        prec = list(
+                          prior = "pc.prec", 
+                          fixed = FALSE, 
+                          param = c(0.2,0.5))))
+                    )
+
+pos <- res.barrier$summary.random$s$mean
+
+local.plot.field(pos, 
+                   main="Spatial posterior for Barrier model",
+                   sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")")) 
+plot(poly.bar.orginal, add=T)
+  
+list(pos = quote(pos), df = df, summ.df = summary(df), 
+                res = res.barrier, summ.res = summary(res.barrier))
+
+
+```
+
+
+
+######## end of simulated data
+
+### STATIONARY COMPARISON
+
+```{r dt2 chunk33}
+model.stat <- inla.spde2.pcmatern(mesh, prior.range = c(1, 0.5), 
+                                  prior.sigma = c(1, 0.5))
 # - Set up the model component for the spatial SPDE model: 
 #   Stationary Matern model
 # - I assume you are somewhat familiar with this model
@@ -924,262 +1300,13 @@ res.stationary <- inla(formula, data=inla.stack.data(stk),
             family = 'gaussian',
             control.family = list(hyper = list(prec = list(
               prior = "pc.prec", fixed = FALSE, 
-              param = c(0.2,0.5))))) #,
-#            control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
-## --------------------------------------------------------------------------------
-summary(res.stationary)
-```
+              param = c(0.2,0.5)))),
+            control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
 
-```{r}
-## --------------------------------------------------------------------------------
+summary(res.stationary)
 local.plot.field(res.stationary$summary.random$s$mean,
           main="Spatial estimate with the stationary model")
-# - plot the posterior spatial marginal means
-# - we call this the spatial estimate, or the smoothed data
-plot(poly.bar.orginal , add=T, col='grey')
-# - Posterior spatial estimate using the stationary model
+plot(poly.original, add=T)
 ```
-```{r}
-u <- res.stationary$summary.random$s$mean
-pal <- wes_palette(21, name = "Zissou1", type = "continuous")
-par(mfrow = c(2, 2))
-
-### 1,2 plots
-local.plot.field(u, main="Spatial estimate with the stationary model")
-local.plot.field_(field = u, mesh = mesh, pal = pal, 
-                  sub = "local.plot.field_(..., pal = wes_palette)")
-
-### 1,2 plots
-local.plot.field_(field = u, mesh = mesh, pal = pal, 
-                  main="Overlay the barrier with plot(..., add=T)", 
-                  sub="plot(poly.bar.orginal, add=T, col='grey')")
-plot(poly.bar.orginal, add=T, col='grey')
-# - Overlay the barrier with add=T
-local.plot.field_(field = u, mesh = mesh, pal = pal, 
-                  sub="plot(poly.bar.orginal, add=T)")
-plot(poly.bar.orginal, add=T)
-
-### 1,2 plots
-local.plot.field_(field = u, mesh = mesh, pal = pal,  
-                  main= "Overlay left/right barrier", 
-                  sub = "plot(poly.bar1, add=T, col='grey')")
-plot(poly.bar1, add=T, col='grey')
-
-local.plot.field_(field = u, mesh = mesh, pal = pal,
-                  sub="plot(poly.bar2, add=T, col=alpha('grey', 0.5))")
-plot(poly.bar2, add=T, col=alpha('grey', 0.5))
-
-### 1,2 plots
-local.plot.field_(field = u, mesh = mesh, pal = pal, 
-                  main= "Overlay left/right barrier with different transparencies", 
-                  sub = "plot(add=T); plot(add=T, col=alpha('grey', 0.3))")
-plot(poly.bar1, add=T, col='grey')
-plot(poly.bar2, add=T, col=alpha('grey', 0.3))
-# here transparency is not r directly, it's just the col=alpha('grey', 0.3)
-
-local.plot.field_(field = u, mesh = mesh, pal = pal, 
-                  sub = "plot(add=T); plot(add=T, col=alpha('grey', 0.1))")
-plot(poly.bar1, add=T, col='grey')
-plot(poly.bar2, add=T, col=alpha('grey', 0.1))
-```
-
-Barrier model
-This is the same model as we used for simulating the data. Except that we have now “forgotten” the range $r_b$ in the barrier area. This range is never known, so it is unreasonable to use it for inference. However, using any small value for the range in the barrier region is OK, it does not need to be the “true value”. For more information about this, see appendix “Choosing barrier range” in (Bakka et al. 2016). The Barrier model is a special case of the Different.
-
-
-```{r}
-## --------------------------------------------------------------------------------
-barrier.model <- barrier.model.p2
-formula2 <- y ~ 0 + intercept + f(s, model=barrier.model)
-# - The spatial model component is different from before
-# - The rest of the model setup is the same as in the stationary case!
-# - - e.g. the inla(...) call below is the same, 
-#     only this formula is different
-
-## --------------------------------------------------------------------------------
-res.barrier.p2 <- inla(formula2, data=inla.stack.data(stk),
-       control.predictor=list(A = inla.stack.A(stk)),
-       family = 'gaussian',
-       control.family = list(hyper = list(prec = list(
-             prior = "pc.prec", fixed = FALSE, 
-             param = c(0.2,0.5))))) #,
-#       control.mode=list(restart=T, theta=c(3.2, 0.4, 1.6)))
-```
-
-
-```{r}
-barrier.model <- barrier.model.o
-formula2 <- y ~ 0 + intercept + f(s, model=barrier.model)
-# - The spatial model component is different from before
-# - The rest of the model setup is the same as in the stationary case!
-# - - e.g. the inla(...) call below is the same, 
-#     only this formula is different
-
-## --------------------------------------------------------------------------------
-res.barrier.o <- inla(formula2, data=inla.stack.data(stk),
-       control.predictor=list(A = inla.stack.A(stk)),
-       family = 'gaussian',
-       control.family = list(hyper = list(prec = list(
-             prior = "pc.prec", fixed = FALSE, 
-             param = c(0.2,0.5))))) #,
-```
-
-
-```{r}
-barrier.model <- barrier.model.p3
-formula2 <- y ~ 0 + intercept + f(s, model=barrier.model)
-# - The spatial model component is different from before
-# - The rest of the model setup is the same as in the stationary case!
-# - - e.g. the inla(...) call below is the same, 
-#     only this formula is different
-
-## --------------------------------------------------------------------------------
-res.barrier.p3 <- inla(formula2, data=inla.stack.data(stk),
-       control.predictor=list(A = inla.stack.A(stk)),
-       family = 'gaussian',
-       control.family = list(hyper = list(prec = list(
-             prior = "pc.prec", fixed = FALSE, 
-             param = c(0.2,0.5))))) #,
-#       control.mode=list(restart=T, theta=c(3.2, 0.4, 1.6)))
-```
-
-```{r}
-## --------------------------------------------------------------------------------
-summary(res.barrier.p2)
-
-
-## --------------------------------------------------------------------------------
-local.plot.field(res.barrier.p2$summary.random$s$mean, 
-                 main="Spatial posterior for Barrier model")
-# - plot the posterior spatial marginal means
-# - we call this the spatial (smoothing) estimate
-# plot(poly.barrier, add=T, col='grey')
-# - Posterior spatial estimate using the Barrier model
-
-
-## --------------------------------------------------------------------------------
-res.barrier.p2$summary.hyperpar
-
-
-## --------------------------------------------------------------------------------
-tmp = inla.tmarginal(function(x) exp(x), res.barrier.p2$marginals.hyperpar[[2]]) 
-plot(tmp, type = "l", xlab = "sigma", ylab = "Density")
-xvals = seq(0, 10, length.out=1000)
-lambda = 0.99; lines(xvals, 3*exp(-lambda*xvals), lty='dashed')
-abline(v=1, col="blue")
-
-
-## --------------------------------------------------------------------------------
-tmp = inla.tmarginal(function(x) exp(x), res.barrier.p2$marginals.hyperpar[[3]]) 
-plot(tmp, type = "l", xlab = "r", ylab = "Density")
-xvals = seq(0, 10, length.out=1000)
-lambda = 1.00; lines(xvals, 3*exp(-lambda*xvals), lty='dashed')
-abline(v=range, col="blue")
-
-
-```
-
-
-```{r}
-## --------------------------------------------------------------------------------
-summary(res.barrier.o)
-
-
-## --------------------------------------------------------------------------------
-local.plot.field(res.barrier.o$summary.random$s$mean, 
-                 main="Spatial posterior for Barrier model")
-# - plot the posterior spatial marginal means
-# - we call this the spatial (smoothing) estimate
-plot(poly.bar.orginal, add=T, col='grey')
-# - Posterior spatial estimate using the Barrier model
-```
-
-
-```{r}
-## --------------------------------------------------------------------------------
-res.barrier.o$summary.hyperpar
-## --------------------------------------------------------------------------------
-tmp = inla.tmarginal(function(x) exp(x), res.barrier.o$marginals.hyperpar[[2]]) 
-plot(tmp, type = "l", xlab = "sigma", ylab = "Density")
-xvals = seq(0, 10, length.out=1000)
-lambda = 0.99; lines(xvals, 3*exp(-lambda*xvals), lty='dashed')
-abline(v=1, col="blue")
-
-
-## --------------------------------------------------------------------------------
-tmp = inla.tmarginal(function(x) exp(x), res.barrier.o$marginals.hyperpar[[3]]) 
-plot(tmp, type = "l", xlab = "r", ylab = "Density")
-xvals = seq(0, 10, length.out=1000)
-lambda = 1.00; lines(xvals, 3*exp(-lambda*xvals), lty='dashed')
-abline(v=range, col="blue")
-
-
-```
-
-```{r}
-## --------------------------------------------------------------------------------
-summary(res.barrier.p3)
-
-## --------------------------------------------------------------------------------
-local.plot.field(res.barrier.p3$summary.random$s$mean, 
-                 main="Spatial posterior for Barrier model")
-# - plot the posterior spatial marginal means
-# - we call this the spatial (smoothing) estimate
-# plot(poly.barrier, add=T, col='grey')
-# - Posterior spatial estimate using the Barrier model
-```
-
-
-```{r}
-## --------------------------------------------------------------------------------
-res.barrier.p3$summary.hyperpar
-
-
-## --------------------------------------------------------------------------------
-tmp = inla.tmarginal(function(x) exp(x), res.barrier.p3$marginals.hyperpar[[2]]) 
-plot(tmp, type = "l", xlab = "sigma", ylab = "Density")
-xvals = seq(0, 10, length.out=1000)
-lambda = 0.99; lines(xvals, 3*exp(-lambda*xvals), lty='dashed')
-abline(v=1, col="blue")
-
-
-## --------------------------------------------------------------------------------
-tmp = inla.tmarginal(function(x) exp(x), res.barrier.p3$marginals.hyperpar[[3]]) 
-plot(tmp, type = "l", xlab = "r", ylab = "Density")
-xvals = seq(0, 10, length.out=1000)
-lambda = 1.00; lines(xvals, 3*exp(-lambda*xvals), lty='dashed')
-abline(v=range, col="blue")
-
-
-```
-
-
-
-# Visualising spatial prior models
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

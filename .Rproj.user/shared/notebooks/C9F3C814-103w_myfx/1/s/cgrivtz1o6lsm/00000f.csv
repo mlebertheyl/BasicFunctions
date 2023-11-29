@@ -1,6 +1,0 @@
-"0","r1 = 1; r2 = 0.5; r3 = 0.5"
-"0","ranges.3 <- c(r1, r2, r3)"
-"0","fem.p <- inla.barrier.fem.plus(mesh, list(bar1, bar2))"
-"2","Error in inla.barrier.fem.plus(mesh, list(bar1, bar2)) : 
-  could not find function ""inla.barrier.fem.plus""
-"
