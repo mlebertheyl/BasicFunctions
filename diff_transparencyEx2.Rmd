@@ -1137,6 +1137,7 @@ local.plot.field(res.barrier.p3.2b$summary.random$s$mean,
                  sub = "barrier.model.p3.2b, range.fraction = c(0.5, 0,1)")
 plot(poly.bar.orginal, add=T)
 ```
+
 LET'S TRY TO DO A FUNCTION LIKE LAST ONE
 
 ```{r dt2 chunk31}
@@ -1278,6 +1279,9 @@ list(pos = quote(pos), df = df, summ.df = summary(df),
 
 
 
+
+
+
 ######## end of simulated data
 
 ### STATIONARY COMPARISON
@@ -1309,4 +1313,59 @@ local.plot.field(res.stationary$summary.random$s$mean,
 plot(poly.original, add=T)
 ```
 
+### STATIONARY COMPARISON
+Same thing as before but a bit more organized.
+I need to run things that are common for stationary and barrier, so run everything is easier 
+
+```{r}
+# this works obviously
+Q <- data4pos
+u <- data4pos$sample
+sigma.u = 1; sigma.epsilon = 0.2; range.fraction = c(0.1, 0.1)
+     
+A.data <- inla.spde.make.A(mesh, loc.data)
+u.data <- A.data %*% u
+df <- data.frame(loc.data)
+names(df) <- c('locx', 'locy')
+
+df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
+  
+stk <- inla.stack(data=list(y=df$y), 
+                    A=list(A.data, 1),
+                    effects=list(s=1:mesh$n, 
+                                 intercept=rep(1, nrow(df))), 
+                    remove.unused = FALSE, 
+                    tag='est')
+
+
+  # - The spatial model component is different from stationary
+  # - The rest of the model setup is the same as in the stationary case!
+  # - - e.g. the inla(...) call below is the same, 
+  #     only this formula is different
+
+model.stat <- inla.spde2.pcmatern(mesh, prior.range = c(1, 0.5), 
+                                  prior.sigma = c(1, 0.5))
+# - Set up the model component for the spatial SPDE model: 
+#   Stationary Matern model
+# - I assume you are somewhat familiar with this model
+
+formula <- y ~ 0 + intercept + f(s, model=model.stat)
+# - Remove the default intercept
+# - - Having it in the stack instead improves the numerical 
+#     accuracy of the INLA algorithm
+# - Fixed effects + random effects
+
+res.stationary <- inla(formula, data=inla.stack.data(stk),
+            control.predictor=list(A = inla.stack.A(stk)),
+            family = 'gaussian',
+            control.family = list(hyper = list(prec = list(
+              prior = "pc.prec", fixed = FALSE, 
+              param = c(0.2,0.5)))),
+            control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
+
+summary(res.stationary)
+local.plot.field(res.stationary$summary.random$s$mean,
+          main="Spatial estimate with the stationary model")
+plot(poly.original, add=T)
+```
 

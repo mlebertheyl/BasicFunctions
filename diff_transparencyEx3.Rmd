@@ -781,7 +781,7 @@ loc.data <- loc.data@coords
 my_diff.pos <- function(mesh, loc.data, 
                         barrier.model, Q, u,
          sigma.u = 1, sigma.epsilon = 0.2,
-         range.fraction = c(0.1, 0.1),
+         range.fraction = c(0.1, 0.1), # needs to be the same as mydiff.r
          pos = res.barrier$summary.random$s$mean,
          return.list = FALSE,
          return.plot = TRUE) {
@@ -849,76 +849,17 @@ data4pos2 <- mydiff.r(mesh, fem = mat.plus,
 # THIS DOESN'T WORK RIGHT AWAY 'CAUSE IT NEEDS barrier.model
 # it needs barrier.model <- inla.barrier.pcmatern.plus
 
-data4pos$barrier.model
+posmean <-  my_diff.pos(mesh, loc.data, data4pos$barrier.model,
+              data4pos[[2]],
+              data4pos$sample, 
+              range.fraction = c(0.1, 0.1),
+              return.list = FALSE, return.plot = TRUE)
+posmean2 <-  my_diff.pos(mesh, loc.data, data4pos2$barrier.model,
+              data4pos2[[2]],
+              data4pos2$sample, 
+              range.fraction = c(0.1, 0.8),
+              return.list = FALSE, return.plot = TRUE)
 ```
-
-
-```{r}
-# this works obviously
-Q <- data4pos
-u <- data4pos$sample
-sigma.u = 1; sigma.epsilon = 0.2; range.fraction = c(0.1, 0.1)
-     
-A.data <- inla.spde.make.A(mesh, loc.data)
-u.data <- A.data %*% u
-df <- data.frame(loc.data)
-names(df) <- c('locx', 'locy')
-
-df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
-  
-stk <- inla.stack(data=list(y=df$y), 
-                    A=list(A.data, 1),
-                    effects=list(s=1:mesh$n, 
-                                 intercept=rep(1, nrow(df))), 
-                    remove.unused = FALSE, 
-                    tag='est')
-formula <- y ~ 0 + intercept + f(s, model = barrier.model)
-
-  # - The spatial model component is different from stationary
-  # - The rest of the model setup is the same as in the stationary case!
-  # - - e.g. the inla(...) call below is the same, 
-  #     only this formula is different
-```
-
-
-```{r}
-fem = mat.plus
-barrier.triangles = list(bar1, bar2) 
-prior.range = c(1.44, 0.5)
-range.fraction = c(0.1, 0.1)
-prior.sigma = c(0.7, 0.5)
-barrier.model <- inla.barrier.pcmatern.plus(mesh, fem, barrier.triangles, 
-                                            prior.range, prior.sigma, 
-                                            range.fraction)
-```
-
-
-```{r}
-res.barrier <- inla(formula, data = inla.stack.data(stk),
-                    control.predictor = list(A = inla.stack.A(stk)),
-                    family = 'gaussian',
-                    control.family = 
-                      list(hyper = list(
-                        prec = list(
-                          prior = "pc.prec", 
-                          fixed = FALSE, 
-                          param = c(0.2,0.5))))
-                    )
-
-pos <- res.barrier$summary.random$s$mean
-
-local.plot.field(pos, 
-                   main="Spatial posterior for Barrier model",
-                   sub = paste("Barrier Model, range.fraction = c(", 
-                               range.fraction[1], ", ", range.fraction[2], ")")) 
-plot(poly.bar.orginal, add=T)
-  
-list(pos = quote(pos), df = df, summ.df = summary(df), 
-                res = res.barrier, summ.res = summary(res.barrier))
-
-
-```
-
 
 
 ```{r}
@@ -945,7 +886,7 @@ for(r in 1:nfrac) {
   ####  posterior mean gif
   fpp <- file.path(dir_out_pm, paste0(f, ".png"))
   png(fpp)
-  my_diff.pos(mesh, loc.data, 
+  my_diff.pos(mesh, loc.data, mats$barrier.model,
               mats[[2]],
               mats$sample, 
               range.fraction = c(0.05, f),
@@ -953,6 +894,7 @@ for(r in 1:nfrac) {
   dev.off()
 }
 
+# TRUE FIELD
 ## list file names and read in
 imgs <- list.files(dir_out_f, full.names = TRUE)
 img_list <- lapply(imgs, image_read)
@@ -961,15 +903,17 @@ img_list <- lapply(imgs, image_read)
 img_joined <- image_join(img_list)
 
 ## animate at 2 frames per second
-img_animated_f <- image_animate(img_joined, fps = 2)
-
-## view animated image
-img_animated_f
+true.field.fps2.r20 <- image_animate(img_joined, fps = 2)
+true.field.fps1.r20 <- image_animate(img_joined, fps = 1)
+# this means we are plotting the true field with x fps and range fraction 20
 
 ## save to disk
-image_write(image = img_animated_f,
-            path = "truefield.gif")
+image_write(image = true.field.fps2.r20,
+            path = "true.field.fps2.r20.gif")
+image_write(image = true.field.fps1.r20,
+            path = "true.field.fps1.r20.gif")
 
+# POSTERIOR MEAN
 ## list file names and read in
 imgs <- list.files(dir_out_pm, full.names = TRUE)
 img_list <- lapply(imgs, image_read)
@@ -978,14 +922,17 @@ img_list <- lapply(imgs, image_read)
 img_joined <- image_join(img_list)
 
 ## animate at 2 frames per second
-img_animated_pm <- image_animate(img_joined, fps = 2)
+pos.mean.fps2.r20 <- image_animate(img_joined, fps = 2)
+pos.mean.fps1.r20 <- image_animate(img_joined, fps = 1)
 
 ## view animated image
-img_animated_pm
+# img_animated_pm
 
 ## save to disk
-image_write(image = img_animated_pm,
-            path = "posmean.gif")
+image_write(image = pos.mean.fps2.r20,
+            path = "pos.mean.fps2.r20.gif")
+image_write(image = pos.mean.fps1.r20,
+            path = "pos.mean.fps1.r20.gif")
 
 
 ```
@@ -1008,7 +955,34 @@ ggplot(data = poly.water_sf) +
 
 ### STATIONARY COMPARISON
 
-```{r dt2 chunk33}
+I need to run things that are common for stationary and barrier, so run everything is easier 
+
+```{r}
+# this works obviously
+Q <- data4pos
+u <- data4pos$sample
+sigma.u = 1; sigma.epsilon = 0.2; range.fraction = c(0.1, 0.1)
+     
+A.data <- inla.spde.make.A(mesh, loc.data)
+u.data <- A.data %*% u
+df <- data.frame(loc.data)
+names(df) <- c('locx', 'locy')
+
+df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
+  
+stk <- inla.stack(data=list(y=df$y), 
+                    A=list(A.data, 1),
+                    effects=list(s=1:mesh$n, 
+                                 intercept=rep(1, nrow(df))), 
+                    remove.unused = FALSE, 
+                    tag='est')
+
+
+  # - The spatial model component is different from stationary
+  # - The rest of the model setup is the same as in the stationary case!
+  # - - e.g. the inla(...) call below is the same, 
+  #     only this formula is different
+
 model.stat <- inla.spde2.pcmatern(mesh, prior.range = c(1, 0.5), 
                                   prior.sigma = c(1, 0.5))
 # - Set up the model component for the spatial SPDE model: 
@@ -1030,11 +1004,132 @@ res.stationary <- inla(formula, data=inla.stack.data(stk),
             control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
 
 summary(res.stationary)
-png()
 local.plot.field(res.stationary$summary.random$s$mean,
           main="Spatial estimate with the stationary model")
 plot(poly.original, add=T)
-dev.off()
+```
+
+```{r}
+my_diff.stat <- function(mesh, df, 
+                         prior.range = c(1, 0.5),
+                         prior.sigma = c(1, 0.5),
+                         range.fraction,
+                         pos = res.stationary$summary.random$s$mean,
+                         return.list = FALSE, return.plot = TRUE) {
+  model.stat <- inla.spde2.pcmatern(mesh, 
+                                    prior.range = c(prior.range[1], prior.range[2]),
+                                    prior.sigma = c(prior.sigma[1], prior.sigma[2]))
+  formula <- y ~ 0 + intercept + f(s, model=model.stat)
+  
+  stk <- inla.stack(data=list(y=df$y), 
+                    A=list(A.data, 1),
+                    effects=list(s=1:mesh$n, 
+                                 intercept=rep(1, nrow(df))), 
+                    remove.unused = FALSE, 
+                    tag='est')
+  
+  res.stationary <- inla(formula, data=inla.stack.data(stk),
+            control.predictor=list(A = inla.stack.A(stk)),
+            family = 'gaussian',
+            control.family = list(hyper = list(prec = list(
+              prior = "pc.prec", fixed = FALSE, 
+              param = c(0.2,0.5)))),
+            control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
+  
+  if (return.plot == TRUE) {
+    local.plot.field(pos,
+          main="Spatial estimate with the stationary model",
+          sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")")) 
+    plot(poly.bar.orginal, add=T)
+    
+  }
+  if (return.list == TRUE) {
+    return(list(pos = quote(pos), 
+                res = res.stationary, summ.res = summary(res.stationary)))
+  }
+}
+
+```
+
+```{r}
+data4pos <- mydiff.r(mesh, fem = mat.plus, 
+                     barrier.triangles = list(bar1, bar2),
+                     range.fraction = c(0.1, 0.1),
+                     return.list = TRUE)
+
+posmean <-  my_diff.pos(mesh, loc.data, data4pos$barrier.model,
+              data4pos[[2]],
+              data4pos$sample, 
+              range.fraction = c(0.1, 0.1),
+              return.list = TRUE, return.plot = TRUE)
+
+estimate.stat <- my_diff.stat(mesh, posmean$df,
+                         range.fraction = c(0.1, 0.1))
 ```
 
 
+
+```{r}
+nfrac <- 20
+################ dir_out
+dir_out_s <- file.path(tempdir(), "statmodel_gif")
+dir.create(dir_out_s, recursive = TRUE)
+
+for(r in 1:nfrac) {
+  f <- r/20
+  mats <- mydiff.r(mesh, fem = mat.plus, barrier.triangles = list(bar1, bar2),
+                   range.fraction = c(0.05, f), 
+                   return.list = TRUE, return.plot = FALSE)
+  
+  pos <- my_diff.pos(mesh, loc.data, mats$barrier.model,
+              mats[[2]],
+              mats$sample, 
+              range.fraction = c(0.05, f),
+              return.list = TRUE, return.plot = FALSE)
+  
+  #### posterior mean estimate stationary model
+  fpp <- file.path(dir_out_s, paste0(f, ".png"))
+  png(fpp)
+  stat <- my_diff.stat(mesh, pos$df,
+                       range.fraction = c(0.05, f),
+                       return.list = FALSE, return.plot = TRUE)
+  plot(poly.bar.orginal, add=T) # see if it works, pos function has it inside
+  dev.off()
+}
+
+# TRUE FIELD
+## list file names and read in
+imgs <- list.files(dir_out_s, full.names = TRUE)
+img_list <- lapply(imgs, image_read)
+
+## join the images together
+img_joined <- image_join(img_list)
+
+## animate at 2 frames per second
+stat.rnadom.mean.fps2.r20 <- image_animate(img_joined, fps = 2)
+stat.rnadom.mean.fps1.r20 <- image_animate(img_joined, fps = 1)
+# this means we are plotting the true field with x fps and range fraction 20
+
+## save to disk
+image_write(image = stat.rnadom.mean.fps2.r20,
+            path = "stat.rnadom.mean.fps2.r20.gif")
+image_write(image = stat.rnadom.mean.fps1.r20,
+            path = "stat.rnadom.mean.fps1.r20.gif")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Do plots for sd and quantile posteriors
