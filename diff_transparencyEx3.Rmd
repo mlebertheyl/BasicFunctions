@@ -778,7 +778,8 @@ loc.data <- loc.data@coords
 ```
 
 ```{r}
-my_diff.pos <- function(mesh, loc.data, Q, u,
+my_diff.pos <- function(mesh, loc.data, 
+                        barrier.model, Q, u,
          sigma.u = 1, sigma.epsilon = 0.2,
          range.fraction = c(0.1, 0.1),
          pos = res.barrier$summary.random$s$mean,
@@ -799,6 +800,7 @@ my_diff.pos <- function(mesh, loc.data, Q, u,
                                  intercept=rep(1, nrow(df))), 
                     remove.unused = FALSE, 
                     tag='est')
+  
   formula <- y ~ 0 + intercept + f(s, model = barrier.model)
   # - The spatial model component is different from stationary
   # - The rest of the model setup is the same as in the stationary case!
