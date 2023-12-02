@@ -1,12 +1,12 @@
----
-output: html_document
-editor_options: 
-  chunk_output_type: inline
----
+General function for spatial fields with plots.
 
-# Barrier Model, 2 barriers example {#bm_2barriers}
+I want to be able to set:
 
-## Simulation and inference with the Barrier model
+- width
+- smalldist
+- seed
+
+Generic functions:
 
 ```{r dt2 chunk1 inla.barrier.fem.plus013, include=FALSE}
 inla.barrier.fem.plus <- function (mesh, barrier.triangles) 
@@ -560,6 +560,8 @@ book.color.d = function(n=4) {
 
 ```
 
+libraries:
+
 ```{r dt2 chunk2 setup, warning=FALSE, message=FALSE}
 library(INLA)
 library(fields)
@@ -568,107 +570,14 @@ library(viridisLite)
 library(scales)
 library(ggplot2)
 library(sf); library(terra); library(sp)
-
-set.seed(2303)
-set.inla.seed <- 2303
+library(magick)
 ```
 
-```{r dt2 chunk3}
-smalldist <- 0.5
-# - the width of the opening in the barrier
-width <- 0.4
-# - The width/thickness of the barrier
-
-local.square.polygon <- function(xlim, ylim){
-# - output is a square
-  xlim = range(xlim); ylim = range(ylim)
-  corner1 = c(xlim[1], ylim[2])
-  corner2 = c(xlim[2], ylim[1])
-  poly = Polygon(rbind(corner1, c(corner1[1], corner2[2]), corner2, c(corner2[1], corner1[2]), corner1), hole = FALSE)
-  return(SpatialPolygons(list(Polygons(list(poly), ID = runif(1)))))
-}
-
-poly1 <- local.square.polygon(xlim=c(-1, 5-smalldist/2), 
-                          ylim=5+width*c(-.5, .5))
-poly2 <- local.square.polygon(xlim=c(5+smalldist/2, 11), 
-                          ylim=5+width*c(-.5, .5))
-poly.original <- SpatialPolygons(c(poly1@polygons, poly2@polygons))
-
-plot(poly.original, main="Barrier area polygon")
-```
-
-############ 
-
-Let´s do with different transparencies first.
-
-```{r dt2 chunk4 5}
-## --------------------------------------------------------------------------------
-max.edge.length <- 0.4
-# - The coarseness of the finite element approximation
-# - Corresponds to grid-square width in discretisations
-# - - Except that finite element approximations are better
-# - Should be compared to size of study area
-# - Should be less than a fourth of the estimated (posterior) 
-#   spatial range
-# - Up to 8x computational time when you halve this value
-
-## --------------------------------------------------------------------------------
-loc1 <- matrix(c(0,0, 10,0, 0,10, 10,10), 4, 2, byrow = T)
-# - This defines the extent of the interior part of the mesh
-# - In an application, if you want the mesh to depend on your 
-#   data locations, you may use those locations instead
-seg <- inla.sp2segment(poly.original)
-# - Transforms a SpatialPolygon to an "inla polygon"
-mesh_ <- inla.mesh.2d(loc=loc1, interior = seg, 
-                    max.e = max.edge.length, offset=1)
-mesh <- mesh_
-# - The INLA mesh constructor, used for any INLA-SPDE model
-```
-
-```{r dt2 chunk5 7}
-## --------------------------------------------------------------------------------
-tl <- length(mesh$graph$tv[,1])
-# - the number of triangles in the mesh
-posTri <- matrix(0, tl, 2)
-for (t in 1:tl){
-  temp = mesh$loc[mesh$graph$tv[t, ], ]
-  posTri[t,] = colMeans(temp)[c(1,2)] 
-}
-posTri <- SpatialPoints(posTri)
-# - the positions of the triangle centres
-```
-
-```{r dt2 chunk6 8}
-# BARRIER ORIGINAL
-bar.original <- over(poly.original, SpatialPoints(posTri), returnList=T)
-# - checking which mesh triangles are inside the barrier area
-bar.original <- unlist(bar.original)
-poly.bar.orginal <- inla.barrier.polygon(mesh, barrier.triangles = bar.original)
-# - the Barrier model's polygon
-# - in most cases this should be the same as poly.original
-
-# BARRIER 1
-bar1 <- over(poly1, SpatialPoints(posTri), returnList=T)
-# - checking which mesh triangles are inside the barrier area
-bar1 <- unlist(bar1)
-poly.bar1 <- inla.barrier.polygon(mesh, barrier.triangles = bar1)
-# - the Barrier model's polygon
-# - in most cases this should be the same as poly.original
-
-# BARRIER 2
-bar2 <- over(poly2, SpatialPoints(posTri), returnList=T)
-# - checking which mesh triangles are inside the barrier area
-bar2 <- unlist(bar2)
-poly.bar2 <- inla.barrier.polygon(mesh, barrier.triangles = bar2)
-
-# PLOTS
-crs_longlat <- CRS("+proj=longlat +datum=WGS84")
-crs_km <- CRS("+proj=utm +zone=39 ellps=WGS84 +units=km")
-```
+transoarency functions:
 
 ```{r dt2 chunk7 9}
 ## --------------------------------------------------------------------------------
-local.plot.field = function(field, ...){
+local.plot.field = function(field, pal = plasma(50), ...){
   xlim = c(2, 8); ylim = xlim;
   proj = inla.mesh.projector(mesh, xlim = xlim, 
                              ylim = ylim, dims=c(300, 300))
@@ -677,74 +586,24 @@ local.plot.field = function(field, ...){
   field.proj = inla.mesh.project(proj, field)
   # - Do the projection
   image.plot(list(x = proj$x, y=proj$y, z = field.proj), 
-             xlim = xlim, ylim = ylim, col = plasma(50), ...)  
+             xlim = xlim, ylim = ylim, col = pal, ...)  
   # - Use image.plot to get nice colors and legend
 }
-print(mesh$n)
 # - This is the appropriate length of the field variable
 ```
 
-ADD range.fraction ACCORDINGLY
-
-```{r dt2 chunk8 12 proof for latter fem.plus function}
-# this is to test the inla.barrier.fem function.
-r1 <- 1; r2 <- 0.5; r3 <- 0.5
-ranges.3 <- c(r1, r2, r3)
-mat.plus <-  inla.barrier.fem.plus(mesh, list(bar1, bar2))
-mat.original <- inla.barrier.fem(mesh, bar.original)
-
-A <- mat.plus$I - 1/8*(r1^2*mat.plus$D[[1]] + r2^2*mat.plus$D[[2]] +  r3^2*mat.plus$D[[3]])
-A1 <- mat.original$I - 1/8*(r1^2*mat.original$D[[1]] + r2^2*mat.original$D[[2]])
-sum(A - A1)
-```
-
-```{r dt2 chunk15}
-range <- 3
-# - the spatial range parameter
-# this is for the non barrier field
-```
-
-
-Now let's do a lot of plots, same width different range fractions
-
-```{r dt2 chunk19}
-mydiff.r <- function(mesh, fem, barrier.triangles, 
-                     prior.range = c(1.44, 0.5), prior.sigma = c(0.7, 0.5),
-                     range.fraction,
-                     range = 3,
-                     set.inla.seed = 2303,
-                     return.list = FALSE,
-                     return.plot = TRUE) {
-  
-  barrier.model <- inla.barrier.pcmatern.plus(mesh, fem, barrier.triangles, 
-                                              prior.range, prior.sigma, 
-                                              range.fraction)
-  # range fraction has to have the same length has barrier triangles
-  Q <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
-  u <- suppressWarnings(inla.qsample(n=1, Q=Q, seed = set.inla.seed))
-  u <- u[ ,1]
-  
-  if (return.plot == TRUE) {
-  local.plot.field(u, main="True spatial field",
-                   sub = paste("Barrier Model, range.fraction = c(", 
-                               range.fraction[1], ", ", range.fraction[2], ")")) 
-  }
-  if (return.list == TRUE) {
-    return(list(barrier.model = barrier.model, Q = Q, sample = u))
-  }
+```{r dt2 chunk3}
+local.square.polygon <- function(xlim, ylim){
+# - output is a square
+  xlim = range(xlim); ylim = range(ylim)
+  corner1 = c(xlim[1], ylim[2])
+  corner2 = c(xlim[2], ylim[1])
+  poly = Polygon(rbind(corner1, c(corner1[1], corner2[2]), corner2, c(corner2[1], corner1[2]), corner1), hole = FALSE)
+  return(SpatialPolygons(list(Polygons(list(poly), ID = runif(1)))))
 }
 ```
 
 ```{r}
-# alternative plot in case I wanna put it inside the functions
-# proj <- inla.mesh.projector(mesh, xlim = c(2, 8), ylim = c(2, 8), dims = c(300, 300)) 
-# book.plot.field(u, projector = proj)
-# book.plot.field(res.barrier.o$summary.random$s$mean, projector = proj)
-```
-
-######## 
-
-```{r dt2 chunk21}
 local.square.polygon_T = function(xlim, ylim){
 # - output is a square
   xlim = range(xlim); ylim = range(ylim)
@@ -753,370 +612,539 @@ local.square.polygon_T = function(xlim, ylim){
   poly = Polygon(rbind(corner1, c(corner1[1], corner2[2]), corner2, c(corner2[1], corner1[2]), corner1), hole = TRUE)
   return(poly)
 }
-
-# change xlim, and make it a hole
-poly1_h <- local.square.polygon_T(xlim=c(2, 5-smalldist/2), 
-                          ylim=5+width*c(-.5, .5))
-#poly1; poly1_h@coords
-poly2_h <- local.square.polygon_T(xlim=c(5+smalldist/2, 8), 
-                          ylim=5+width*c(-.5, .5))
-#poly2; poly2_h@coords
-
-loc1 <- matrix(c(2,2, 8,2, 8,8, 2,8), 4, 2, byrow = T)
-# plot(loc1)
-locp <- Polygon(loc1, hole = FALSE)
-# plot(SpatialPolygons(list(Polygons(list(locp), '1'))))
-
-poly.water <- SpatialPolygons(list(Polygons(list(locp, poly1_h, poly2_h), '0')))
-# plot(poly.water)
-poly.water_sf <- st_as_sf(poly.water)
-
-set.seed(set.inla.seed)
-loc.data <- spsample(poly.water, n = 100, type = "random")
-loc.data_sf <- st_as_sf(loc.data)
-loc.data <- loc.data@coords
 ```
 
 ```{r}
-my_diff.pos <- function(mesh, loc.data, 
-                        barrier.model, Q, u,
-         sigma.u = 1, sigma.epsilon = 0.2,
-         range.fraction = c(0.1, 0.1), # needs to be the same as mydiff.r
-         pos = res.barrier$summary.random$s$mean,
-         return.list = FALSE,
-         return.plot = TRUE) {
+crs_longlat <- CRS("+proj=longlat +datum=WGS84")
+crs_km <- CRS("+proj=utm +zone=39 ellps=WGS84 +units=km")
+```
+
+
+```{r}
+fx.pre.field <- function(
+    smalldist = 0.5, 
+    width = c(0.4, 0.4), 
+    max.edge.length = 0.4,
+    set.inla.seed = 2303,
+    loc.data = FALSE,
+    n = 100 # only if loc.data is TRUE
+    ){
   
+  poly1 <- local.square.polygon(xlim=c(-1, 5-smalldist/2), 
+                          ylim=5+width[1]*c(-.5, .5))
+  poly2 <- local.square.polygon(xlim=c(5+smalldist/2, 11), 
+                          ylim=5+width[2]*c(-.5, .5))
+  poly.original <- SpatialPolygons(c(poly1@polygons, poly2@polygons))
+  
+  loc1 <- matrix(c(0,0, 10,0, 0,10, 10,10), 4, 2, byrow = T)
+  
+  seg <- inla.sp2segment(poly.original)
+# - Transforms a SpatialPolygon to an "inla polygon"
+  mesh <- inla.mesh.2d(loc=loc1, interior = seg, 
+                    max.e = max.edge.length, offset=1)
+
+  tl <- length(mesh$graph$tv[,1])
+# - the number of triangles in the mesh
+  posTri <- matrix(0, tl, 2)
+
+  for (t in 1:tl){
+    temp = mesh$loc[mesh$graph$tv[t, ], ]
+    posTri[t,] = colMeans(temp)[c(1,2)] 
+    }
+
+  posTri <- SpatialPoints(posTri)
+# - the positions of the triangle centres
+
+  bar.original <- over(poly.original, SpatialPoints(posTri), returnList=T)
+# - checking which mesh triangles are inside the barrier area
+  bar.original <- unlist(bar.original)
+  poly.bar.orginal <- inla.barrier.polygon(mesh, barrier.triangles = bar.original)
+# - the Barrier model's polygon
+# - in most cases this should be the same as poly.original
+
+# BARRIER 1
+  bar1 <- over(poly1, SpatialPoints(posTri), returnList=T)
+# - checking which mesh triangles are inside the barrier area
+  bar1 <- unlist(bar1)
+  poly.bar1 <- inla.barrier.polygon(mesh, barrier.triangles = bar1)
+# - the Barrier model's polygon
+# - in most cases this should be the same as poly.original
+
+# BARRIER 2
+  bar2 <- over(poly2, SpatialPoints(posTri), returnList=T)
+# - checking which mesh triangles are inside the barrier area
+  bar2 <- unlist(bar2)
+  poly.bar2 <- inla.barrier.polygon(mesh, barrier.triangles = bar2)
+
+# PLOTS
+  mat <-  inla.barrier.fem.plus(mesh, list(bar1, bar2))
+  
+  if(loc.data == TRUE){
+    
+    poly1_h <- local.square.polygon_T(xlim=c(2, 5-smalldist/2), 
+                          ylim=5+width[1]*c(-.5, .5))
+
+    poly2_h <- local.square.polygon_T(xlim=c(5+smalldist/2, 8), 
+                          ylim=5+width[2]*c(-.5, .5))
+    loc1 <- matrix(c(2,2, 8,2, 8,8, 2,8), 4, 2, byrow = T)
+
+    locp <- Polygon(loc1, hole = FALSE)
+    
+    poly.water <- SpatialPolygons(list(Polygons(list(locp, poly1_h, poly2_h), '0')))
+    poly.water_sf <- st_as_sf(poly.water)
+    
+    set.seed(set.inla.seed)
+    loc.data <- spsample(x = poly.water, n = n, type = "random")
+    loc.data_sf <- st_as_sf(loc.data)
+    loc.data <- loc.data@coords
+    
+    mesh_h <-inla.mesh.2d(boundary = poly.water_sf, 
+             max.e = max.edge.length, offset=1)
+    
+    return(list(poly1 = poly1, 
+              poly2 = poly2, 
+              poly.original = poly.original, 
+              mesh = mesh, 
+              posTri = posTri, 
+              poly.bar.orginal = poly.bar.orginal, 
+              bar1 = bar1, 
+              bar2 = bar2, 
+              mat = mat,
+              poly.water = poly.water, 
+              loc.data = loc.data,
+              poly.water = poly.water,
+              poly.water_sf = poly.water_sf,
+              mesh_h = mesh_h,
+              loc.data_sf = loc.data_sf))
+  }
+  
+  if(loc.data == FALSE) {
+   
+    return(list(poly1 = poly1, 
+              poly2 = poly2, 
+              poly.original = poly.original, 
+              mesh = mesh, 
+              posTri = posTri, 
+              poly.bar.orginal = poly.bar.orginal, 
+              bar1 = bar1, 
+              bar2 = bar2, 
+              mat = mat)) 
+  }
+}
+
+```
+
+```{r}
+pre.field <- fx.pre.field(loc.data = T)
+
+# plot(st_geometry(poly.water_sf))
+ggplot(data = pre.field$poly.water_sf) + 
+      inlabru::gg(pre.field$mesh_h) + #plot mesh_hb alternatively
+      geom_sf(data =pre.field$loc.data_sf,
+          col='purple',size=1.7,alpha=0.5)  
+```
+
+```{r dt2 chunk19}
+transparency <- function(mesh = mesh, fem = fem, 
+                         barrier.triangles = barrier.triangles, 
+                     prior.range = c(1.44, 0.5), prior.sigma = c(0.7, 0.5),
+                     range.fraction = range.fraction,
+                     range = 3,
+                     set.inla.seed = 2303, # make sure is the same as prev. fx if loc.data = T
+                     loc.data = loc.data, 
+                     sigma.u = 1, sigma.epsilon = 0.2,
+                     poly.original = poly.bar.orginal,
+                     prior.range.st = c(1, 0.5),    
+                     prior.sigma.st = c(1, 0.5),
+                     return.list = TRUE) {
+  
+  # field = TRUE has to be true to start
+  barrier.model <- inla.barrier.pcmatern.plus(mesh, fem, barrier.triangles, 
+                                              prior.range, prior.sigma, 
+                                              range.fraction)
+  # range fraction has to have the same length has barrier triangles
+  Q <- inla.rgeneric.q(barrier.model, "Q", theta = c(0, log(range)))
+  u <- suppressWarnings(inla.qsample(n=1, Q=Q, seed = set.inla.seed))
+  u <- u[ ,1]
+    
   A.data <- inla.spde.make.A(mesh, loc.data)
   #Q from mydiff.r function
+    
   u.data <- A.data %*% u
+  
   df <- data.frame(loc.data)
   names(df) <- c('locx', 'locy')
-
   df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
   
+    
   stk <- inla.stack(data=list(y=df$y), 
                     A=list(A.data, 1),
                     effects=list(s=1:mesh$n, 
                                  intercept=rep(1, nrow(df))), 
                     remove.unused = FALSE, 
                     tag='est')
-  
+
+    
   formula <- y ~ 0 + intercept + f(s, model = barrier.model)
   # - The spatial model component is different from stationary
   # - The rest of the model setup is the same as in the stationary case!
   # - - e.g. the inla(...) call below is the same, 
   #     only this formula is different
   
+    
   res.barrier <- inla(formula, data = inla.stack.data(stk),
                         control.predictor = list(A = inla.stack.A(stk)),
                         family = 'gaussian',
                         control.family = list(hyper = list(
                           prec = list(prior = "pc.prec", fixed = FALSE, param = c(0.2,0.5)))),
                         control.mode=list(restart=T, theta=c(3.2, 0.4, 1.6)))
-  if (return.plot == TRUE) {
-  local.plot.field(pos, 
-                   main="Spatial posterior for Barrier model",
-                   sub = paste("Barrier Model, range.fraction = c(", 
-                               range.fraction[1], ", ", range.fraction[2], ")")) 
-  plot(poly.bar.orginal, add=T)
-  }
-  
-  if (return.list == TRUE) {
-    return(list(pos = quote(pos), df = df, summ.df = summary(df), 
-                res = res.barrier, summ.res = summary(res.barrier)))
-  }
-}
-
-```
-
-### im here
-```{r dt2 chunk32}
-data4pos <- mydiff.r(mesh, fem = mat.plus, 
-                     barrier.triangles = list(bar1, bar2),
-                     range.fraction = c(0.1, 0.1),
-                     return.list = TRUE)
-data4pos2 <- mydiff.r(mesh, fem = mat.plus, 
-                     barrier.triangles = list(bar1, bar2),
-                     range.fraction = c(0.1, 0.8),
-                     return.list = TRUE)
-
-#my_diff.pos(mesh, loc.data, data4pos[[2]], u = data4pos$sample)
-#suppressWarnings(my_diff.pos(mesh, loc.data, 
-#                             data4pos2[[2]],
-#                             data4pos2$sample, 
-#                             range.fraction = c(0.1, 0.8)))
-
-# THIS DOESN'T WORK RIGHT AWAY 'CAUSE IT NEEDS barrier.model
-# it needs barrier.model <- inla.barrier.pcmatern.plus
-
-posmean <-  my_diff.pos(mesh, loc.data, data4pos$barrier.model,
-              data4pos[[2]],
-              data4pos$sample, 
-              range.fraction = c(0.1, 0.1),
-              return.list = FALSE, return.plot = TRUE)
-posmean2 <-  my_diff.pos(mesh, loc.data, data4pos2$barrier.model,
-              data4pos2[[2]],
-              data4pos2$sample, 
-              range.fraction = c(0.1, 0.8),
-              return.list = FALSE, return.plot = TRUE)
-```
-
-
-```{r}
-# SPATIAL TRUE FIELD AND POSTERIOR FOR BARRIER MODEL
-#####
-nfrac <- 20
-################ dir_out
-dir_out_f <- file.path(tempdir(), "truefield_gif")
-dir.create(dir_out_f, recursive = TRUE)
-
-dir_out_pm <- file.path(tempdir(), "posmean_gif")
-dir.create(dir_out_pm, recursive = TRUE)
-
-for(r in 1:nfrac) {
-  f <- r/20
-  #### true field gif
-  fpp <- file.path(dir_out_f, paste0(f, ".png"))
-  png(fpp)
-  mats <- mydiff.r(mesh, fem = mat.plus, barrier.triangles = list(bar1, bar2),
-                   range.fraction = c(0.05, f), 
-                   return.list = TRUE, return.plot = TRUE)
-  plot(poly.bar.orginal, add=T) # see if it works, pos function has it inside
-  dev.off()
-  ####  posterior mean gif
-  fpp <- file.path(dir_out_pm, paste0(f, ".png"))
-  png(fpp)
-  my_diff.pos(mesh, loc.data, mats$barrier.model,
-              mats[[2]],
-              mats$sample, 
-              range.fraction = c(0.05, f),
-              return.list = FALSE, return.plot = TRUE)
-  dev.off()
-}
-
-# TRUE FIELD
-## list file names and read in
-imgs <- list.files(dir_out_f, full.names = TRUE)
-img_list <- lapply(imgs, image_read)
-
-## join the images together
-img_joined <- image_join(img_list)
-
-## animate at 2 frames per second
-true.field.fps2.r20 <- image_animate(img_joined, fps = 2)
-true.field.fps1.r20 <- image_animate(img_joined, fps = 1)
-# this means we are plotting the true field with x fps and range fraction 20
-
-## save to disk
-image_write(image = true.field.fps2.r20,
-            path = "true.field.fps2.r20.gif")
-image_write(image = true.field.fps1.r20,
-            path = "true.field.fps1.r20.gif")
-
-# POSTERIOR MEAN
-## list file names and read in
-imgs <- list.files(dir_out_pm, full.names = TRUE)
-img_list <- lapply(imgs, image_read)
-
-## join the images together
-img_joined <- image_join(img_list)
-
-## animate at 2 frames per second
-pos.mean.fps2.r20 <- image_animate(img_joined, fps = 2)
-pos.mean.fps1.r20 <- image_animate(img_joined, fps = 1)
-
-## view animated image
-# img_animated_pm
-
-## save to disk
-image_write(image = pos.mean.fps2.r20,
-            path = "pos.mean.fps2.r20.gif")
-image_write(image = pos.mean.fps1.r20,
-            path = "pos.mean.fps1.r20.gif")
-
-
-```
-
-```{r}
-mesh_h <-inla.mesh.2d(boundary = poly.water_sf, 
-             max.e = max.edge.length, offset=1)
-
-mesh_hb <-inla.mesh.2d(boundary = poly.water_sf, 
-             max.edge = c(0.1, 0.4), 
-             cutoff = c(0.02),
-             offset=1)
-# plot(st_geometry(poly.water_sf))
-ggplot(data = poly.water_sf) + 
-  inlabru::gg(mesh_h) + #plot mesh_hb alternatively
-  geom_sf(data = loc.data_sf,
-          col='purple',size=1.7,alpha=0.5)  
-```
-
-
-### STATIONARY COMPARISON
-
-I need to run things that are common for stationary and barrier, so run everything is easier 
-
-```{r}
-# this works obviously
-Q <- data4pos
-u <- data4pos$sample
-sigma.u = 1; sigma.epsilon = 0.2; range.fraction = c(0.1, 0.1)
-     
-A.data <- inla.spde.make.A(mesh, loc.data)
-u.data <- A.data %*% u
-df <- data.frame(loc.data)
-names(df) <- c('locx', 'locy')
-
-df$y <- drop(sigma.u * u.data + sigma.epsilon * rnorm(nrow(df)))
-  
-stk <- inla.stack(data=list(y=df$y), 
-                    A=list(A.data, 1),
-                    effects=list(s=1:mesh$n, 
-                                 intercept=rep(1, nrow(df))), 
-                    remove.unused = FALSE, 
-                    tag='est')
-
-
-  # - The spatial model component is different from stationary
-  # - The rest of the model setup is the same as in the stationary case!
-  # - - e.g. the inla(...) call below is the same, 
-  #     only this formula is different
-
-model.stat <- inla.spde2.pcmatern(mesh, prior.range = c(1, 0.5), 
-                                  prior.sigma = c(1, 0.5))
-# - Set up the model component for the spatial SPDE model: 
-#   Stationary Matern model
-# - I assume you are somewhat familiar with this model
-
-formula <- y ~ 0 + intercept + f(s, model=model.stat)
-# - Remove the default intercept
-# - - Having it in the stack instead improves the numerical 
-#     accuracy of the INLA algorithm
-# - Fixed effects + random effects
-
-res.stationary <- inla(formula, data=inla.stack.data(stk),
-            control.predictor=list(A = inla.stack.A(stk)),
-            family = 'gaussian',
-            control.family = list(hyper = list(prec = list(
-              prior = "pc.prec", fixed = FALSE, 
-              param = c(0.2,0.5)))),
-            control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
-
-summary(res.stationary)
-local.plot.field(res.stationary$summary.random$s$mean,
-          main="Spatial estimate with the stationary model")
-plot(poly.original, add=T)
-```
-
-```{r}
-my_diff.stat <- function(mesh, df, 
-                         prior.range = c(1, 0.5),
-                         prior.sigma = c(1, 0.5),
-                         range.fraction,
-                         pos = res.stationary$summary.random$s$mean,
-                         return.list = FALSE, return.plot = TRUE) {
-  model.stat <- inla.spde2.pcmatern(mesh, 
-                                    prior.range = c(prior.range[1], prior.range[2]),
-                                    prior.sigma = c(prior.sigma[1], prior.sigma[2]))
-  formula <- y ~ 0 + intercept + f(s, model=model.stat)
-  
-  stk <- inla.stack(data=list(y=df$y), 
-                    A=list(A.data, 1),
-                    effects=list(s=1:mesh$n, 
-                                 intercept=rep(1, nrow(df))), 
-                    remove.unused = FALSE, 
-                    tag='est')
-  
-  res.stationary <- inla(formula, data=inla.stack.data(stk),
-            control.predictor=list(A = inla.stack.A(stk)),
-            family = 'gaussian',
-            control.family = list(hyper = list(prec = list(
-              prior = "pc.prec", fixed = FALSE, 
-              param = c(0.2,0.5)))),
-            control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
-  
-  if (return.plot == TRUE) {
-    local.plot.field(pos,
-          main="Spatial estimate with the stationary model",
-          sub = paste("Barrier Model, range.fraction = c(", 
-                               range.fraction[1], ", ", range.fraction[2], ")")) 
-    plot(poly.bar.orginal, add=T)
     
-  }
+  model.stat <- inla.spde2.pcmatern(mesh, 
+                                    prior.range = c(prior.range.st[1], prior.range.st[2]),
+                                    prior.sigma = c(prior.sigma.st[1], prior.sigma.st[2]))
+  
+  formula.st <- y ~ 0 + intercept + f(s, model=model.stat)
+  
+  res.stationary <- inla(formula.st, data=inla.stack.data(stk),
+            control.predictor=list(A = inla.stack.A(stk)),
+            family = 'gaussian',
+            control.family = list(hyper = list(prec = list(
+              prior = "pc.prec", fixed = FALSE, 
+              param = c(0.2,0.5)))),
+            control.mode=list(restart=T, theta=c(4,-1.7,0.25)))
+  
   if (return.list == TRUE) {
-    return(list(pos = quote(pos), 
-                res = res.stationary, summ.res = summary(res.stationary)))
+    
+    list.field <- list(barrier.model = barrier.model, Q = Q, sample = u)
+    pos.bm <- list(df = df, res = res.barrier)
+    pos.st <- list(res = res.stationary)
+    
+    return(list(list.field = list.field, pos.bm = pos.bm, pos.st = pos.st))
   }
+                     
 }
 
 ```
 
+
 ```{r}
-data4pos <- mydiff.r(mesh, fem = mat.plus, 
-                     barrier.triangles = list(bar1, bar2),
-                     range.fraction = c(0.1, 0.1),
+pf <- pre.field
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+range.fraction <- c(0.1, 0.1)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+
+trans <- transparency(mesh = mesh, fem = fem, 
+                     barrier.triangles = barrier.triangles, 
+                     prior.range = c(1.44, 0.5), prior.sigma = c(0.7, 0.5),
+                     range.fraction = range.fraction,
+                     range = 3,
+                     set.inla.seed = 2303,
+                     loc.data = loc.data, 
+                     sigma.u = 1, sigma.epsilon = 0.2,
+                     poly.original = poly.bar.orginal,
+                     prior.range.st = c(1, 0.5),    
+                     prior.sigma.st = c(1, 0.5),
                      return.list = TRUE)
-
-posmean <-  my_diff.pos(mesh, loc.data, data4pos$barrier.model,
-              data4pos[[2]],
-              data4pos$sample, 
-              range.fraction = c(0.1, 0.1),
-              return.list = TRUE, return.plot = TRUE)
-
-estimate.stat <- my_diff.stat(mesh, posmean$df,
-                         range.fraction = c(0.1, 0.1))
 ```
-
-
 
 ```{r}
-nfrac <- 20
-################ dir_out
-dir_out_s <- file.path(tempdir(), "statmodel_gif")
-dir.create(dir_out_s, recursive = TRUE)
+plot.transparency <- function(nfrac = 1,
+                              left.poly = 0.1,
+                              poly.bar.orginal = poly.bar.orginal,
+                              fps = 1,
+                              pal.field = plasma(50),
+                              pal.pos.mean = plasma(50),
+                              pal.pos.sd = plasma(50),
+                              pal.pos.q25 = plasma(50),
+                              pal.pos.q50 = plasma(50),
+                              pal.pos.q975 = plasma(50),
+                              
+                              pal.pos.mean.st = plasma(50),
+                              pal.pos.sd.st = plasma(50),
+                              pal.pos.q25.st = plasma(50),
+                              pal.pos.q50.st = plasma(50),
+                              pal.pos.q975.st = plasma(50),
+                              ...
+    ){
+  dir_out_f <- file.path(tempdir(), "truefield_gif")
+  dir.create(dir_out_f, recursive = TRUE)
+  
+  # barrier model
+  dir_out_pm <- file.path(tempdir(), "posmean_gif")
+  dir.create(dir_out_pm, recursive = TRUE)
+  
+  dir_out_sd <- file.path(tempdir(), "possd_gif")
+  dir.create(dir_out_sd, recursive = TRUE)
+  
+  dir_out_q25 <- file.path(tempdir(), "posq25_gif")
+  dir.create(dir_out_q25, recursive = TRUE)
+  
+  dir_out_q5 <- file.path(tempdir(), "posq5_gif")
+  dir.create(dir_out_q5, recursive = TRUE)
+  
+  dir_out_q975 <- file.path(tempdir(), "posq975_gif")
+  dir.create(dir_out_q975, recursive = TRUE)
+  
+  # stationary model
+  dir_out_s <- file.path(tempdir(), "statmodel_gif")
+  dir.create(dir_out_s, recursive = TRUE)
+  
+  dir_out_st.sd <- file.path(tempdir(), "st.sd_gif")
+  dir.create(dir_out_st.sd, recursive = TRUE)
+  
+  dir_out_st.q25 <- file.path(tempdir(), "pos.st.q25_gif")
+  dir.create(dir_out_st.q25, recursive = TRUE)
+  
+  dir_out_st.q5 <- file.path(tempdir(), "pos.st.q5_gif")
+  dir.create(dir_out_st.q5, recursive = TRUE)
+  
+  dir_out_st.q975 <- file.path(tempdir(), "pos.st.q975_gif")
+  dir.create(dir_out_st.q975, recursive = TRUE)
+  
+  for (r in 1:nfrac) {
+    f <- r/nfrac
+    trans <- transparency(mesh = mesh, fem = fem, 
+                barrier.triangles = barrier.triangles, 
+                prior.range = c(1.44, 0.5), prior.sigma = c(0.7, 0.5),
+                range.fraction = c(left.poly, f),
+                range = 3,
+                set.inla.seed = 2303, # make sure is the same as prev. fx if loc.data = T
+                loc.data = loc.data, 
+                sigma.u = 1, sigma.epsilon = 0.2,
+                poly.original = poly.bar.orginal,
+                prior.range.st = c(1, 0.5),
+                prior.sigma.st = c(1, 0.5),
+                return.list = TRUE
+    )
+    
+    # SPATIAL FIELD, u
+    fpp <- file.path(dir_out_f, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$list.field$sample, 
+                     main="Spatial posterior for Barrier model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.field)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    # POSTERIOR MEAN
+    fpp <- file.path(dir_out_pm, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.bm$res$summary.random$s$mean, 
+                     main="Spatial mean posterior for Barrier model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.mean)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    #POS SD
+    fpp <- file.path(dir_out_sd, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.bm$res$summary.random$s$sd, 
+                     main="Spatial sd posterior for Barrier model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.sd)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    #POS QUANTILES
+    # 0.025
+    fpp <- file.path(dir_out_q25, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.bm$res$summary.random$s[,4], 
+                     main="Spatial 0.025 quantile posterior for Barrier model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.q25)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
 
-for(r in 1:nfrac) {
-  f <- r/20
-  mats <- mydiff.r(mesh, fem = mat.plus, barrier.triangles = list(bar1, bar2),
-                   range.fraction = c(0.05, f), 
-                   return.list = TRUE, return.plot = FALSE)
+    # 0.5
+    fpp <- file.path(dir_out_q5, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.bm$res$summary.random$s[,5], 
+                     main="Spatial 0.5 quantile posterior for Barrier model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.q50)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    # 0.975
+    fpp <- file.path(dir_out_q975, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.bm$res$summary.random$s[,6], 
+                     main="Spatial 0.975 quantile posterior for Barrier model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.q975)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    # SPATIAL ESTIMATE WITH STATIONARY MODEL
+    fpp <- file.path(dir_out_s, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.st$res$summary.random$s$mean,
+                     main="Spatial estimate with the stationary model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.mean.st) 
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    #POS SD st
+    fpp <- file.path(dir_out_st.sd, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.st$res$summary.random$s$sd, 
+                     main="Spatial sd posterior for Stationary model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.sd.st)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    #POS QUANTILES st
+    # 0.025 st
+    fpp <- file.path(dir_out_st.q25, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.st$res$summary.random$s[,4], 
+                     main="Spatial 0.025 quantile posterior for Stationary model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.q25.st)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+
+    # 0.5 st
+    fpp <- file.path(dir_out_st.q5, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.st$res$summary.random$s[,5], 
+                     main="Spatial 0.5 quantile posterior for Stationary model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.q50.st)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+    
+    # 0.975 st
+    fpp <- file.path(dir_out_st.q975, paste0(f, ".png"))
+    png(fpp)
+    
+    local.plot.field(trans$pos.st$res$summary.random$s[,6], 
+                     main="Spatial 0.975 quantile posterior for Stationary model",
+                     sub = paste("Barrier Model, range.fraction = c(", 
+                               range.fraction[1], ", ", range.fraction[2], ")"),
+                     pal = pal.pos.q975.st)
+    plot(poly.bar.orginal, add=T)
+    dev.off()
+  }
   
-  pos <- my_diff.pos(mesh, loc.data, mats$barrier.model,
-              mats[[2]],
-              mats$sample, 
-              range.fraction = c(0.05, f),
-              return.list = TRUE, return.plot = FALSE)
-  
-  #### posterior mean estimate stationary model
-  fpp <- file.path(dir_out_s, paste0(f, ".png"))
-  png(fpp)
-  stat <- my_diff.stat(mesh, pos$df,
-                       range.fraction = c(0.05, f),
-                       return.list = FALSE, return.plot = TRUE)
-  plot(poly.bar.orginal, add=T) # see if it works, pos function has it inside
-  dev.off()
+    ## bm
+    # SPATIAL FIELD, u
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_f, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/true.field.gif"))
+    
+    # POSTERIOR MEAN
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_pm, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.mean.gif"))
+    
+    #POS SD
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_sd, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.sd.gif"))
+    
+    #POS QUANTILES
+    # 0.025
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_q25, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.q25.gif"))
+    
+    # 0.5
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_q5, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.q5.gif"))
+    
+    # 0.975
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_q975, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.q975.gif"))
+    
+    ## st
+    # u
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_s, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/stat.rnadom.mean.gif"))
+    
+    # st sd
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_st.sd, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.sd.st.gif"))
+    
+    #POS QUANTILES st
+    # 0.025
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_st.q25, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.q25.st.gif"))
+    
+    # 0.5
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_st.q5, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.q5.st.gif"))
+    
+    # 0.975
+    image_write(image = image_animate(
+      image_join(
+        lapply(list.files(dir_out_st.q975, full.names = TRUE), image_read)), 
+      fps = fps), 
+      path = ("gif/gif.fx/pos.q975.st.gif"))
 }
+```
 
-## list file names and read in
-imgs <- list.files(dir_out_s, full.names = TRUE)
-img_list <- lapply(imgs, image_read)
+######
 
-## join the images together
-img_joined <- image_join(img_list)
-
-## animate at 2 frames per second
-stat.rnadom.mean.fps2.r20 <- image_animate(img_joined, fps = 2)
-stat.rnadom.mean.fps1.r20 <- image_animate(img_joined, fps = 1)
-# this means we are plotting the true field with x fps and range fraction 20
-
-## save to disk
-image_write(image = stat.rnadom.mean.fps2.r20,
-            path = "stat.rnadom.mean.fps2.r20.gif")
-image_write(image = stat.rnadom.mean.fps1.r20,
-            path = "stat.rnadom.mean.fps1.r20.gif")
-
-
+```{r}
+plot.transparency(nfrac = 2,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1)
 ```
 
 
@@ -1128,7 +1156,3 @@ image_write(image = stat.rnadom.mean.fps1.r20,
 
 
 
-
-
-
-Do plots for sd and quantile posteriors
