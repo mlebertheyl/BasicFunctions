@@ -1,0 +1,331 @@
+Different Geometries.
+
+Using functions from diff_transparencyEx1fx.Rmd file
+I'm not running functions again so run that script first.
+
+Start with fx.pre.field to define polygons and construct the mesh.
+
+width = c(1.5, 1.5)
+
+```{r}
+pre.field1 <- fx.pre.field(width = c(1.5, 1.5), loc.data = TRUE)
+
+pf <- pre.field1
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+range.fraction <- c(0.1, 0.1)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot(pf$poly.original, main="Barrier area polygon")
+ggplot(data = pf$poly.water_sf) + 
+      inlabru::gg(pf$mesh_h) + #plot mesh_hb alternatively
+      geom_sf(data =pf$loc.data_sf,
+          col='purple',size=1.7,alpha=0.5) 
+
+plot.transparency(nfrac = 2,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1)
+```
+
+
+```{r}
+pre.field2 <- fx.pre.field(width = c(1.5, 1.5), loc.data = TRUE,
+                           set.inla.seed = 8)
+pf <- pre.field2
+
+ggplot(data = pf$poly.water_sf) + 
+      inlabru::gg(pf$mesh_h) + #plot mesh_hb alternatively
+      geom_sf(data =pf$loc.data_sf,
+          col='purple',size=1.7,alpha=0.5)
+```
+
+
+```{r}
+pre.field3 <- fx.pre.field(width = c(1.5, 1.5), loc.data = TRUE,
+                           set.inla.seed = 3)
+pf <- pre.field3
+
+ggplot(data = pf$poly.water_sf) + 
+      inlabru::gg(pf$mesh_h) + #plot mesh_hb alternatively
+      geom_sf(data =pf$loc.data_sf,
+          col='purple',size=1.7,alpha=0.5)
+
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+range.fraction <- c(0.1, 0.1)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 2,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  set.inla.seed = 3)
+```
+
+```{r}
+pre.field4 <- fx.pre.field(width = c(1.5, 1.5), loc.data = TRUE,
+                           n = 20)
+pf <- pre.field4
+
+ggplot(data = pf$poly.water_sf) + 
+      inlabru::gg(pf$mesh_h) + #plot mesh_hb alternatively
+      geom_sf(data =pf$loc.data_sf,
+          col='purple',size=1.7,alpha=0.5)
+
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+range.fraction <- c(0.1, 0.1)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 2,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1)
+```
+
+seed = 8 and seed = 3.
+width = c(0.4, 0.4)
+n of sample in fx.pre.field = 20
+nfrac = 10
+start at 0.1
+
+see path to get the folder where the gif s
+
+```{r}
+pre.field5 <- fx.pre.field(loc.data = T,
+                          set.inla.seed = 8,
+                          n = 20)
+
+pf <- pre.field5
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 10,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  set.inla.seed = 8,
+                  gif.path = "gif/gif.fx/width=c(0.4,0.4) dif_trans1fx/nfrac = 10, n=20/seed8/",
+                  plot.points = 
+                    points(loc.data, pch = 16, cex = 0.5, 
+                           col=alpha('black', 0.5)))
+
+pre.field6 <- fx.pre.field(loc.data = T,
+                          set.inla.seed = 3,
+                          n = 20)
+
+pf <- pre.field6
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 10,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  set.inla.seed = 3,
+                  gif.path = "gif/gif.fx/width=c(0.4,0.4) dif_trans1fx/nfrac = 10, n=20/seed3/",
+                  plot.points = 
+                    points(loc.data, pch = 16, cex = 0.5, 
+                           col=alpha('black', 0.5)))
+```
+
+width = c(2, 2)
+n of sample in fx.pre.field = 20 and 10
+left.poly = 0.01
+nfrac = 5
+max.frac = 100
+
+see path to get the folder where the gif are
+
+```{r}
+pre.field7 <- fx.pre.field(loc.data = T,
+                           width = c(2, 2),
+                          n = 20)
+
+pf <- pre.field7
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(2,2) plots/n=20/")
+##
+pre.field8 <- fx.pre.field(loc.data = T,
+                           width = c(2, 2),
+                          n = 10)
+
+pf <- pre.field8
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(2,2) plots/n=10/")
+plot(poly.bar.orginal)
+
+##
+pre.field7.1 <- fx.pre.field(loc.data = T,
+                           width = c(2, 2),
+                           smalldist = 0.8,
+                          n = 20)
+
+pf <- pre.field7.1
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(2,2) plots/n=20/smdist=0.8/")
+
+##
+pre.field7.2 <- fx.pre.field(loc.data = T,
+                           width = c(2, 2),
+                           smalldist = 0.3,
+                          n = 20)
+
+pf <- pre.field7.2
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(2,2) plots/n=20/smdist=0.3/")
+plot(poly.bar.orginal)
+```
+
+
+```{r}
+pre.field9 <- fx.pre.field(loc.data = T,
+                           width = c(2.5, 2.5),
+                           smalldist = 0.8,
+                           n = 20)
+
+pf <- pre.field9
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  max.frac = 100,
+                  left.poly = 0.01,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(2.5,2.5) plots/smdist=0.8/")
+##
+pre.field9.1 <- fx.pre.field(loc.data = T,
+                           width = c(2.5, 2.5),
+                           smalldist = 1,
+                           n = 20)
+                    
+
+pf <- pre.field9.1
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  max.frac = 100,
+                  left.poly = 0.01,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(2.5,2.5) plots/smdist=1/")
+```
+
+
+```{r}
+pre.field10 <- fx.pre.field(loc.data = T,
+                           width = c(0.5, 3),
+                           smalldist = 0.5,
+                           n = 20)
+pf <- pre.field10
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  max.frac = 100,
+                  left.poly = 0.01,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  range = 10,
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(0.5,3) plots/")
+
+```
+
+```{r}
+pre.field10.1 <- fx.pre.field(loc.data = T,
+                           width = c(0.3, 3),
+                           smalldist = 0.5,
+                           n = 30)
+pf <- pre.field10.1
+mesh <- pf$mesh 
+fem <- pf$mat 
+barrier.triangles <- list(pf$bar1, pf$bar2)
+loc.data <- pf$loc.data
+poly.bar.orginal <- pf$poly.bar.orginal
+
+plot.transparency(nfrac = 5,
+                  max.frac = 100,
+                  left.poly = 0.01,
+                  poly.bar.orginal = poly.bar.orginal, 
+                  range = 10,
+                  fps = 1,
+                  gif.path = "gif/gif.fx/width=c(0.3,3) plots/")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

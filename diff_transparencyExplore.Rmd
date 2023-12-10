@@ -12,6 +12,7 @@ library(INLA)
 library(fields)
 library(rgdal)
 library(viridisLite)
+library(scales)
 
 set.seed(2016)
 set.inla.seed = 2016
